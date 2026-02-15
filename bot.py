@@ -120,7 +120,6 @@ def kb_lessons(year: str, spec: str, sem: str, subject: str):
     items = LESSONS[year][spec][sem][subject]  # [(title, url), ...]
     keyboard = []
 
-    # روابط الدروس (URL buttons)
     for title, url in items:
         keyboard.append([InlineKeyboardButton(title, url=url)])
 
@@ -133,7 +132,7 @@ def kb_lessons(year: str, spec: str, sem: str, subject: str):
 
 # ====== الشاشات ======
 WELCOME_TEXT = (
-    "السلام عليكم ورحمة الله تعالى وبركاته v2🌿\n"
+    "السلام عليكم ورحمة الله تعالى وبركاته 🌿\n"
     "مرحباً بك في البوت المساعد لطالب الشريعة\n"
     "في جامعة البشير الإبراهيمي 🕌\n\n"
     "📚 الدروس عبر الأزرار\n"
@@ -143,7 +142,6 @@ WELCOME_TEXT = (
 
 
 async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # تسجيل الطالب (للبث)
     if update.effective_chat and update.effective_chat.type == "private":
         add_user(update.effective_chat.id)
 
@@ -164,17 +162,14 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     data = q.data
 
-    # Home
     if data == "home":
         context.user_data.clear()
         return await show_home(update, context)
 
-    # Years list
     if data == "years":
         context.user_data.clear()
         return await q.message.edit_text("📘 اختر السنة:", reply_markup=kb_years())
 
-    # Back buttons
     if data.startswith("back:"):
         where = data.split(":", 1)[1]
 
@@ -212,7 +207,6 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data.pop("subject", None)
             return await q.message.edit_text("📚 اختر المادة:", reply_markup=kb_subjects(year, spec, sem))
 
-    # Select year by index
     if data.startswith("y:"):
         idx = int(data.split(":", 1)[1])
         years = list(LESSONS.keys())
@@ -220,7 +214,6 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["year"] = year
         return await q.message.edit_text("📙 اختر التخصص:", reply_markup=kb_specs(year))
 
-    # Select spec
     if data.startswith("sp:"):
         idx = int(data.split(":", 1)[1])
         year = context.user_data.get("year")
@@ -229,7 +222,6 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["spec"] = spec
         return await q.message.edit_text("📗 اختر السداسي:", reply_markup=kb_sems(year, spec))
 
-    # Select sem
     if data.startswith("se:"):
         idx = int(data.split(":", 1)[1])
         year = context.user_data.get("year")
@@ -239,7 +231,6 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["sem"] = sem
         return await q.message.edit_text("📚 اختر المادة:", reply_markup=kb_subjects(year, spec, sem))
 
-    # Select subject
     if data.startswith("su:"):
         idx = int(data.split(":", 1)[1])
         year = context.user_data.get("year")
@@ -265,9 +256,8 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-# ====== (3) استقبال أسئلة الطلاب نص/صورة/ملف وإرسالها للمشرفين ======
+# ====== استقبال أسئلة الطلاب (نص/صورة/ملف) وإرسالها للمشرفين ======
 async def student_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # فقط الخاص
     if update.effective_chat.type != "private":
         return
 
@@ -277,7 +267,6 @@ async def student_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     student_chat_id = update.effective_chat.id
     msg = update.message
 
-    # رسالة معلومات للمشرفين (يردون عليها Reply)
     meta = await context.bot.send_message(
         ADMIN_CHAT_ID,
         "📩 سؤال جديد من طالب\n\n"
@@ -286,7 +275,6 @@ async def student_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "↩️ للرد: اعمل Reply على هذه الرسالة أو على الرسالة التي تحتها."
     )
 
-    # نسخ رسالة الطالب (نص/صورة/ملف...) إلى مجموعة المشرفين كـ Reply على meta
     copied = await context.bot.copy_message(
         chat_id=ADMIN_CHAT_ID,
         from_chat_id=student_chat_id,
@@ -294,7 +282,6 @@ async def student_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_to_message_id=meta.message_id
     )
 
-    # حفظ الربط: (رسالة meta) و (رسالة الطالب المنسوخة) -> chat_id للطالب
     m = load_map()
     m[str(meta.message_id)] = student_chat_id
     m[str(copied.message_id)] = student_chat_id
@@ -318,12 +305,10 @@ async def admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not student_chat_id:
         return
 
-    # لو رد نصي: نرسل بصيغة جميلة
     if msg.text:
         await context.bot.send_message(student_chat_id, f"📩 رد من المشرفين:\n\n{msg.text}")
         return
 
-    # لو رد بملف/صورة/صوت...: نرسل عنوان ثم ننسخ الرسالة كما هي
     await context.bot.send_message(student_chat_id, "📩 رد من المشرفين:")
     await context.bot.copy_message(
         chat_id=student_chat_id,
@@ -332,13 +317,11 @@ async def admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# ====== (6) Broadcast إعلان جماعي للطلاب ======
+# ====== Broadcast إعلان جماعي للطلاب ======
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # فقط داخل مجموعة المشرفين
     if update.effective_chat.id != ADMIN_CHAT_ID:
         return
 
-    # تحقق أن المرسل Admin/Creator في المجموعة
     try:
         member = await context.bot.get_chat_member(ADMIN_CHAT_ID, update.effective_user.id)
         if member.status not in ("administrator", "creator"):
@@ -350,11 +333,10 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     users = load_users()
     if not users:
-        await update.message.reply_text("لا يوجد طلاب مسجلين بعد.")
+        await update.message.reply_text("لا يوجد طلاب مسجلين بعد. اطلب منهم إرسال /start للبوت.")
         return
 
-    # محتوى الإعلان:
-    # 1) إذا كتب نص بعد /broadcast
+    # بث نص بعد الأمر
     if context.args:
         text = " ".join(context.args).strip()
         if not text:
@@ -382,7 +364,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ تم الإرسال إلى: {ok}\n⚠️ فشل/محظور: {bad}")
         return
 
-    # 2) أو يرسل /broadcast بالرد على رسالة (نص/صورة/ملف) لبثّها
+    # أو بث رسالة عبر Reply
     if update.message.reply_to_message:
         src = update.message.reply_to_message
 
@@ -392,8 +374,11 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for chat_id in list(users):
             try:
-                # ننسخ الرسالة كما هي (يدعم نص/صورة/ملف...)
-                await context.bot.copy_message(chat_id=chat_id, from_chat_id=ADMIN_CHAT_ID, message_id=src.message_id)
+                await context.bot.copy_message(
+                    chat_id=chat_id,
+                    from_chat_id=ADMIN_CHAT_ID,
+                    message_id=src.message_id
+                )
                 ok += 1
             except Forbidden:
                 removed.add(chat_id)
@@ -428,17 +413,25 @@ def build_app():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("broadcast", broadcast, filters=filters.Chat(ADMIN_CHAT_ID)))
-
     app.add_handler(CallbackQueryHandler(buttons))
 
-    # ردود المشرفين (أي رسالة في مجموعة المشرفين) - داخل الدالة نتحقق أنه Reply
+    # ردود المشرفين في المجموعة (لازم Reply)
     app.add_handler(MessageHandler(filters.Chat(ADMIN_CHAT_ID) & ~filters.COMMAND, admin_reply))
 
-    # رسائل الطلاب في الخاص (نص + صور + ملفات + صوت + فيديو...)
+    # ✅ فلتر الطالب: إصلاح DOCUMENT و VIDEO و AUDIO (PTB v21)
     student_filter = (
         filters.ChatType.PRIVATE
         & ~filters.COMMAND
-        & (filters.TEXT | filters.PHOTO | filters.DOCUMENT | filters.VIDEO | filters.AUDIO | filters.VOICE | filters.ANIMATION | filters.STICKER)
+        & (
+            filters.TEXT
+            | filters.PHOTO
+            | filters.Document.ALL
+            | filters.Video.ALL
+            | filters.Audio.ALL
+            | filters.VOICE
+            | filters.ANIMATION
+            | filters.Sticker.ALL
+        )
     )
     app.add_handler(MessageHandler(student_filter, student_message))
 
