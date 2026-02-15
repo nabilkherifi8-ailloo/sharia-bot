@@ -1,16 +1,25 @@
 import os
 import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
 from telegram.error import Forbidden, BadRequest
 
 from lessons import LESSONS
 
+# ====== إعدادات ======
 ADMIN_CHAT_ID = -5286458958
 MAP_FILE = "msg_map.json"
 USERS_FILE = "users.json"
 
 
+# ====== أدوات مساعدة ======
 def _clean(s: str) -> str:
     if not s:
         return ""
@@ -58,6 +67,11 @@ def add_user(chat_id: int):
     save_users(users)
 
 
+def is_http(s: str) -> bool:
+    return isinstance(s, str) and (s.startswith("http://") or s.startswith("https://"))
+
+
+# ====== لوحات المفاتيح ======
 def kb_home():
     return InlineKeyboardMarkup([[InlineKeyboardButton("📚 الدروس", callback_data="years")]])
 
@@ -93,9 +107,20 @@ def kb_subjects(year: str, spec: str, sem: str):
     return InlineKeyboardMarkup(kb)
 
 
-def kb_lessons(year: str, spec: str, sem: str, subject: str):
-    items = LESSONS[year][spec][sem][subject]
-    kb = [[InlineKeyboardButton(title, url=url)] for title, url in items]
+def kb_lessons(items):
+    """
+    items: list of tuples (title, value)
+      - if value is http(s) => open link
+      - else => treat as Telegram file_id and send by callback
+    """
+    kb = []
+    for i, (title, value) in enumerate(items):
+        if is_http(value):
+            kb.append([InlineKeyboardButton(title, url=value)])
+        else:
+            # PDF file_id => زر يرسل الملف
+            kb.append([InlineKeyboardButton(title, callback_data=f"file:{i}")])
+
     kb.append([InlineKeyboardButton("⬅️ رجوع", callback_data="back:subjects")])
     kb.append([InlineKeyboardButton("🏠 الرئيسية", callback_data="home")])
     return InlineKeyboardMarkup(kb)
@@ -111,9 +136,17 @@ WELCOME_TEXT = (
 )
 
 
+# ====== شاشات ======
 async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat and update.effective_chat.type == "private":
         add_user(update.effective_chat.id)
+
+    # تنظيف حالة التصفح
+    context.user_data.pop("year", None)
+    context.user_data.pop("spec", None)
+    context.user_data.pop("sem", None)
+    context.user_data.pop("subject", None)
+    context.user_data.pop("lesson_items", None)
 
     if update.message:
         await update.message.reply_text(WELCOME_TEXT, reply_markup=kb_home())
@@ -121,17 +154,41 @@ async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.message.edit_text(WELCOME_TEXT, reply_markup=kb_home())
 
 
+# ====== /start ======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await show_home(update, context)
 
 
+# ====== /getid (للمشرفين فقط) ======
+async def getid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # يعمل داخل مجموعة المشرفين (أو الخاص لو تحب، لكن الأفضل داخل المجموعة)
+    if update.effective_chat.id != ADMIN_CHAT_ID:
+        return
+
+    msg = update.message
+    if not msg:
+        return
+
+    # يجب أن يكون Reply على ملف PDF/Document
+    if not msg.reply_to_message or not msg.reply_to_message.document:
+        await msg.reply_text("استعمال صحيح:\n1) ارفع ملف PDF هنا\n2) اعمل Reply عليه ثم اكتب: /getid")
+        return
+
+    doc = msg.reply_to_message.document
+    await msg.reply_text(
+        "✅ هذا هو file_id (انسخه وضعه في lessons.py):\n\n"
+        f"`{doc.file_id}`",
+        parse_mode="Markdown"
+    )
+
+
+# ====== الأزرار ======
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     data = q.data
 
     if data == "home":
-        context.user_data.clear()
         return await show_home(update, context)
 
     if data == "years":
@@ -152,6 +209,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data.pop("spec", None)
             context.user_data.pop("sem", None)
             context.user_data.pop("subject", None)
+            context.user_data.pop("lesson_items", None)
             return await q.message.edit_text("📙 اختر التخصص:", reply_markup=kb_specs(year))
 
         if where == "sems":
@@ -161,6 +219,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return await q.message.edit_text("📘 اختر السنة:", reply_markup=kb_years())
             context.user_data.pop("sem", None)
             context.user_data.pop("subject", None)
+            context.user_data.pop("lesson_items", None)
             return await q.message.edit_text("📗 اختر السداسي:", reply_markup=kb_sems(year, spec))
 
         if where == "subjects":
@@ -170,6 +229,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not (year and spec and sem):
                 return await q.message.edit_text("📘 اختر السنة:", reply_markup=kb_years())
             context.user_data.pop("subject", None)
+            context.user_data.pop("lesson_items", None)
             return await q.message.edit_text("📚 اختر المادة:", reply_markup=kb_subjects(year, spec, sem))
 
     if data.startswith("y:"):
@@ -201,7 +261,9 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         subject = list(LESSONS[year][spec][sem].keys())[idx]
         context.user_data["subject"] = subject
 
-        items = LESSONS[year][spec][sem][subject]
+        items = LESSONS[year][spec][sem][subject]  # [(title, url_or_fileid)]
+        context.user_data["lesson_items"] = items
+
         if not items:
             return await q.message.edit_text(
                 f"⚠️ لا توجد دروس مضافة بعد لمادة:\n{subject}",
@@ -211,9 +273,33 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ])
             )
 
-        return await q.message.edit_text(f"📖 {subject}\nاختر الدرس:", reply_markup=kb_lessons(year, spec, sem, subject))
+        return await q.message.edit_text(
+            f"📖 {subject}\nاختر الدرس:",
+            reply_markup=kb_lessons(items)
+        )
+
+    # إرسال PDF عند الضغط على زر file:<i>
+    if data.startswith("file:"):
+        i = int(data.split(":", 1)[1])
+        items = context.user_data.get("lesson_items", [])
+        if not items or i < 0 or i >= len(items):
+            return await q.message.reply_text("⚠️ حدث خطأ: الدرس غير موجود. أعد فتح المادة من جديد.")
+
+        title, file_id = items[i]
+        if is_http(file_id):
+            # احتياط: لو كان رابط
+            return await q.message.reply_text(f"افتح الرابط:\n{file_id}")
+
+        try:
+            await q.message.reply_document(document=file_id, caption=title)
+        except BadRequest:
+            await q.message.reply_text("⚠️ لم أستطع إرسال الملف (file_id غير صالح).")
+        except Exception:
+            await q.message.reply_text("⚠️ حدث خطأ أثناء إرسال الملف.")
+        return
 
 
+# ====== أسئلة الطلاب: نسخ أي شيء من الخاص للمشرفين ======
 async def student_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         return
@@ -247,9 +333,11 @@ async def student_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text("✅ تم إرسال رسالتك للمشرفين.\nسيتم الرد عليك بإذن الله.")
 
 
+# ====== رد المشرفين بالـ Reply ======
 async def admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_CHAT_ID:
         return
+
     msg = update.message
     if not msg or not msg.reply_to_message:
         return
@@ -265,9 +353,14 @@ async def admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await context.bot.send_message(student_chat_id, "📩 رد من المشرفين:")
-    await context.bot.copy_message(chat_id=student_chat_id, from_chat_id=ADMIN_CHAT_ID, message_id=msg.message_id)
+    await context.bot.copy_message(
+        chat_id=student_chat_id,
+        from_chat_id=ADMIN_CHAT_ID,
+        message_id=msg.message_id
+    )
 
 
+# ====== Broadcast ======
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_CHAT_ID:
         return
@@ -286,11 +379,13 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("لا يوجد طلاب مسجلين بعد. اطلب منهم إرسال /start للبوت.")
         return
 
+    # بث نص
     if context.args:
         text = " ".join(context.args).strip()
         ok = 0
         bad = 0
         removed = set()
+
         for chat_id in list(users):
             try:
                 await context.bot.send_message(chat_id, f"📢 إعلان:\n\n{text}")
@@ -300,20 +395,28 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 bad += 1
             except Exception:
                 bad += 1
+
         if removed:
             users -= removed
             save_users(users)
+
         await update.message.reply_text(f"✅ تم الإرسال إلى: {ok}\n⚠️ فشل/محظور: {bad}")
         return
 
+    # بث رسالة Reply (صورة/ملف...)
     if update.message.reply_to_message:
         src = update.message.reply_to_message
         ok = 0
         bad = 0
         removed = set()
+
         for chat_id in list(users):
             try:
-                await context.bot.copy_message(chat_id=chat_id, from_chat_id=ADMIN_CHAT_ID, message_id=src.message_id)
+                await context.bot.copy_message(
+                    chat_id=chat_id,
+                    from_chat_id=ADMIN_CHAT_ID,
+                    message_id=src.message_id
+                )
                 ok += 1
             except Forbidden:
                 removed.add(chat_id)
@@ -322,27 +425,35 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 bad += 1
             except Exception:
                 bad += 1
+
         if removed:
             users -= removed
             save_users(users)
+
         await update.message.reply_text(f"✅ تم بث الرسالة إلى: {ok}\n⚠️ فشل/محظور: {bad}")
         return
 
     await update.message.reply_text("اكتب:\n/broadcast نص الإعلان\nأو اعمل Reply على رسالة ثم /broadcast")
 
 
+# ====== بناء التطبيق ======
 def build_app():
     token = _clean(os.environ.get("BOT_TOKEN", ""))
     if not token:
         raise RuntimeError("BOT_TOKEN is missing. Set it in Render Environment Variables.")
 
     app = Application.builder().token(token).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("broadcast", broadcast, filters=filters.Chat(ADMIN_CHAT_ID)))
+    app.add_handler(CommandHandler("getid", getid, filters=filters.Chat(ADMIN_CHAT_ID)))
+
     app.add_handler(CallbackQueryHandler(buttons))
 
+    # ردود المشرفين في المجموعة (بالـ Reply)
     app.add_handler(MessageHandler(filters.Chat(ADMIN_CHAT_ID) & ~filters.COMMAND, admin_reply))
 
-    # ✅ فلتر مضمون: كل شيء في الخاص ما عدا الأوامر
+    # أي شيء في الخاص (نص/صورة/ملف...) يروح للمشرفين
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND & filters.ALL, student_message))
+
     return app
