@@ -14,9 +14,10 @@ from telegram.error import Forbidden, BadRequest
 from lessons import LESSONS
 
 # ====== إعدادات ======
-ADMIN_CHAT_ID = -5286458958
-MAP_FILE = "msg_map.json"
-USERS_FILE = "users.json"
+ADMIN_CHAT_ID = -5286458958          # مجموعة المشرفين
+ADMIN_USER_IDS = {1490829295}        # IDs للمشرفين المسموح لهم بـ /getid (أضف غيرك إذا لزم)
+MAP_FILE = "msg_map.json"            # ربط رسائل المجموعة بالطالب للرد
+USERS_FILE = "users.json"            # قائمة الطلاب (للبث)
 
 
 # ====== أدوات مساعدة ======
@@ -73,7 +74,9 @@ def is_http(s: str) -> bool:
 
 # ====== لوحات المفاتيح ======
 def kb_home():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("📚 الدروس", callback_data="years")]])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📚 الدروس", callback_data="years")]
+    ])
 
 
 def kb_years():
@@ -118,7 +121,6 @@ def kb_lessons(items):
         if is_http(value):
             kb.append([InlineKeyboardButton(title, url=value)])
         else:
-            # PDF file_id => زر يرسل الملف
             kb.append([InlineKeyboardButton(title, callback_data=f"file:{i}")])
 
     kb.append([InlineKeyboardButton("⬅️ رجوع", callback_data="back:subjects")])
@@ -159,27 +161,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await show_home(update, context)
 
 
-# ====== /getid (للمشرفين فقط) ======
+# ====== /getid (استخراج file_id للـ PDF) ======
 async def getid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # يعمل داخل مجموعة المشرفين (أو الخاص لو تحب، لكن الأفضل داخل المجموعة)
-    if update.effective_chat.id != ADMIN_CHAT_ID:
-        return
-
     msg = update.message
     if not msg:
         return
 
-    # يجب أن يكون Reply على ملف PDF/Document
-    if not msg.reply_to_message or not msg.reply_to_message.document:
-        await msg.reply_text("استعمال صحيح:\n1) ارفع ملف PDF هنا\n2) اعمل Reply عليه ثم اكتب: /getid")
+    # فقط المشرفين أو داخل مجموعة المشرفين
+    if update.effective_user.id not in ADMIN_USER_IDS and update.effective_chat.id != ADMIN_CHAT_ID:
         return
 
-    doc = msg.reply_to_message.document
-    await msg.reply_text(
-        "✅ هذا هو file_id (انسخه وضعه في lessons.py):\n\n"
-        f"`{doc.file_id}`",
-        parse_mode="Markdown"
-    )
+    if not msg.reply_to_message:
+        await msg.reply_text("✅ ارسل ملف PDF ثم اعمل عليه Reply واكتب /getid")
+        return
+
+    # لازم يكون PDF كـ document
+    if msg.reply_to_message.document:
+        doc = msg.reply_to_message.document
+        await msg.reply_text(
+            "✅ هذا هو file_id (انسخه وضعه في lessons.py):\n\n"
+            f"`{doc.file_id}`",
+            parse_mode="Markdown"
+        )
+        return
+
+    await msg.reply_text("⚠️ الرسالة التي رددت عليها ليست ملف PDF (Document). أرسل الـ PDF كـ ملف ثم أعد المحاولة.")
 
 
 # ====== الأزرار ======
@@ -261,7 +267,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         subject = list(LESSONS[year][spec][sem].keys())[idx]
         context.user_data["subject"] = subject
 
-        items = LESSONS[year][spec][sem][subject]  # [(title, url_or_fileid)]
+        items = LESSONS[year][spec][sem][subject]
         context.user_data["lesson_items"] = items
 
         if not items:
@@ -287,7 +293,6 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         title, file_id = items[i]
         if is_http(file_id):
-            # احتياط: لو كان رابط
             return await q.message.reply_text(f"افتح الرابط:\n{file_id}")
 
         try:
@@ -403,7 +408,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ تم الإرسال إلى: {ok}\n⚠️ فشل/محظور: {bad}")
         return
 
-    # بث رسالة Reply (صورة/ملف...)
+    # بث Reply (صورة/ملف...)
     if update.message.reply_to_message:
         src = update.message.reply_to_message
         ok = 0
@@ -446,7 +451,7 @@ def build_app():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("broadcast", broadcast, filters=filters.Chat(ADMIN_CHAT_ID)))
-    app.add_handler(CommandHandler("getid", getid, filters=filters.Chat(ADMIN_CHAT_ID)))
+    app.add_handler(CommandHandler("getid", getid))
 
     app.add_handler(CallbackQueryHandler(buttons))
 
