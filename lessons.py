@@ -4,22 +4,41 @@ LESSONS = {
     "سنة أولى": {
         "بدون تخصص": {
             "السداسي الأول": {
-                "عقيدة 1": [],
+                "عقيدة 1": [
+                    ("📄 عقيدة 1 - ملف 1", "BQACAgQAAxkBAAFCmGJpk9PYWHIEgMxB-DuJur3BFzljvQACgBsAAm56aVIu8pY0wQUwtzoE"),
+                ],
+
                 "أصول الفقه 2": [
                     ("📄 أصول الفقه (PDF)", "BQACAgQAAxkBAAFCdVppkSyO6VHdxF8ju9IZ013053RjjQACAxsAArDnUVK8c5NmO0Az0ToE"),
                 ],
-                "فقه العبادات 1": [],
+
+                "فقه العبادات 1": [
+                    ("📄 فقه العبادات 1 - ملف 1", "BQACAgQAAxkBAAFCdWJpkS0TXYH3veVE8dDHq8J7qvIK-AACzRoAAlSh0FNDv9Bc2ga09zoE"),
+                    ("📄 فقه العبادات 1 - ملف 2", "BQACAgQAAxkBAAFCdWNpkS0TFF75maC7rFIq03aPl3gVKgAC6hwAAs5GCFBrkEpzULn58ToE"),
+                    ("📄 فقه العبادات 1 - ملف 3", "BQACAgQAAxkBAAFCdWRpkS0TN3XQNQNEB8xj16jW8_eCBAAC6xwAAs5GCFAUUqQrpGMBPzoE"),
+                    ("📄 فقه العبادات 1 - ملف 4", "BQACAgQAAxkBAAFCdWVpkS0TyGeZvl175Rxwkaq_d1EWOQAC7BwAAs5GCFCqhYFsY1IimToE"),
+                    ("📄 فقه العبادات 1 - ملف 5", "BQACAgQAAxkBAAFCdWZpkS0T3MLr20idYp3ojDAx3FRccQAC4xoAApjYUFBlLRAg1vdxNDoE"),
+                    ("📄 فقه العبادات 1 - ملف 6", "BQACAgQAAxkBAAFCdWdpkS0TAToyVPCAsFqwdi3M9w-RsQAC_hsAAm6EwFCzcMXU--jNNToE"),
+                    ("📄 فقه العبادات 1 - ملف 7", "BQACAgQAAxkBAAFCdWhpkS0TBp_x9CTVAmqp883c3gFhgAACdBoAAiLqKFFA3B81pLTXuDoE"),
+                ],
+
                 "لغة عربية": [],
                 "علوم القرآن": [],
-                "تاريخ إسلامي": [],
+
+                "تاريخ إسلامي": [
+                    ("📄 تاريخ إسلامي - ملف 1", "BQACAgQAAxkBAAFCmGhpk9R8RO6iYlHgutG7ec9Q7aFmAgACTRsAAk9pYFO0xGw5as5mTToE"),
+                ],
+
                 "علوم التربية": [],
                 "منهجية البحث": [],
                 "لغة انجليزية": [],
                 "إعلام الي": [],
+
                 "ترتيل وحفظ القرآن": [
-                    ("📄 ترتيل وحفظ القرآن (PDF)", "BQACAgQAAxkBAAFCdXJpkS0qnkM5bJJcexPHoq8KkfeSfgAC9xkAAudO2VDXIIxmhSA2uzoE"),
+                    ("📄 ترتيل وحفظ القرآن - ملف 1", "BQACAgQAAxkBAAFCdXJpkS0qnkM5bJJcexPHoq8KkfeSfgAC9xkAAudO2VDXIIxmhSA2uzoE"),
                 ],
             },
+
             "السداسي الثاني": {
                 "عقيدة 1": [],
                 "فقه العبادات 2": [],
