@@ -1,5 +1,8 @@
 import os
 import json
+import random
+from datetime import datetime
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -15,9 +18,47 @@ from lessons import LESSONS
 
 # ====== إعدادات ======
 ADMIN_CHAT_ID = -5286458958          # مجموعة المشرفين
-ADMIN_USER_IDS = {1490829295}        # IDs للمشرفين المسموح لهم بـ /getid (أضف غيرك إذا لزم)
+ADMIN_USER_IDS = {1490829295}        # IDs للمشرفين المسموح لهم بـ /getid
 MAP_FILE = "msg_map.json"            # ربط رسائل المجموعة بالطالب للرد
 USERS_FILE = "users.json"            # قائمة الطلاب (للبث)
+
+POINTS_FILE = "points.json"          # نقاط الطلاب
+CAL_FILE = "calendar.json"           # التقويم الجامعي
+
+
+# ====== بنك أسئلة (Quiz) ======
+QUIZ_QUESTIONS = [
+    {
+        "q": "عدد أركان الإسلام؟",
+        "choices": ["3", "4", "5", "6"],
+        "answer": 2,
+        "points": 2,
+    },
+    {
+        "q": "النية محلها؟",
+        "choices": ["اللسان", "القلب", "اليد", "العين"],
+        "answer": 1,
+        "points": 2,
+    },
+    {
+        "q": "وقت صلاة الفجر ينتهي بـ؟",
+        "choices": ["طلوع الشمس", "الزوال", "غروب الشمس", "منتصف الليل"],
+        "answer": 0,
+        "points": 2,
+    },
+    {
+        "q": "حكم الوضوء للصلاة؟",
+        "choices": ["سنة", "واجب", "مكروه", "مباح"],
+        "answer": 1,
+        "points": 2,
+    },
+]
+
+ACHIEVEMENTS = [
+    (10, "🥉 إنجاز: مجتهد (10 نقاط)"),
+    (25, "🥈 إنجاز: متفوق (25 نقطة)"),
+    (50, "🥇 إنجاز: نجم الشريعة (50 نقطة)"),
+]
 
 
 # ====== أدوات مساعدة ======
@@ -68,6 +109,50 @@ def add_user(chat_id: int):
     save_users(users)
 
 
+def load_points():
+    # {"123": {"points": 12, "badges": ["..."], "last_quiz": "..."}} 
+    return _load_json(POINTS_FILE, {})
+
+
+def save_points(p):
+    _save_json(POINTS_FILE, p)
+
+
+def get_profile(user_id: int):
+    p = load_points()
+    key = str(user_id)
+    if key not in p:
+        p[key] = {"points": 0, "badges": [], "last_quiz": None}
+        save_points(p)
+    return p[key]
+
+
+def set_profile(user_id: int, profile: dict):
+    p = load_points()
+    p[str(user_id)] = profile
+    save_points(p)
+
+
+def default_calendar():
+    return {
+        "📌 مواعيد الامتحانات": "لم يتم تحديد المواعيد بعد.",
+        "🏖️ العطل": "لم يتم تحديد العطل بعد.",
+        "⏳ آخر الآجال": "لم يتم تحديد الآجال بعد.",
+    }
+
+
+def load_calendar():
+    cal = _load_json(CAL_FILE, None)
+    if not isinstance(cal, dict) or not cal:
+        cal = default_calendar()
+        _save_json(CAL_FILE, cal)
+    return cal
+
+
+def save_calendar(cal: dict):
+    _save_json(CAL_FILE, cal)
+
+
 def is_http(s: str) -> bool:
     return isinstance(s, str) and (s.startswith("http://") or s.startswith("https://"))
 
@@ -75,7 +160,10 @@ def is_http(s: str) -> bool:
 # ====== لوحات المفاتيح ======
 def kb_home():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📚 الدروس", callback_data="years")]
+        [InlineKeyboardButton("📚 الدروس", callback_data="years")],
+        [InlineKeyboardButton("📝 اختبار قصير", callback_data="quiz:start")],
+        [InlineKeyboardButton("🏆 نقاطي/إنجازاتي", callback_data="me:points")],
+        [InlineKeyboardButton("🗓️ التقويم الجامعي", callback_data="cal:home")],
     ])
 
 
@@ -133,6 +221,8 @@ WELCOME_TEXT = (
     "مرحباً بك في البوت المساعد لطالب الشريعة\n"
     "في جامعة البشير الإبراهيمي 🕌\n\n"
     "📚 الدروس عبر الأزرار\n"
+    "📝 اختبارات قصيرة + نقاط وإنجازات\n"
+    "🗓️ تقويم جامعي (امتحانات/عطل/آجال)\n\n"
     "✍️ لإرسال سؤال (نص/صورة/ملف): أرسل رسالتك هنا في الخاص\n"
     "وسيتم الرد عليك من طرف المشرفين بإذن الله"
 )
@@ -188,15 +278,178 @@ async def getid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text("⚠️ الرسالة التي رددت عليها ليست ملف PDF (Document). أرسل الـ PDF كـ ملف ثم أعد المحاولة.")
 
 
-# ====== الأزرار ======
+# ====== التقويم: /setcal (للمشرف) ======
+# الصيغة:
+# /setcal 📌 مواعيد الامتحانات | امتحان السداسي الأول: 20/03 ...
+async def setcal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_CHAT_ID:
+        return
+
+    txt = update.message.text.replace("/setcal", "", 1).strip()
+    if "|" not in txt:
+        await update.message.reply_text("الصيغة:\n/setcal اسم_القسم | النص")
+        return
+
+    section, value = [x.strip() for x in txt.split("|", 1)]
+    cal = load_calendar()
+    cal[section] = value
+    save_calendar(cal)
+    await update.message.reply_text("✅ تم تحديث التقويم.")
+
+
+# ====== Quiz ======
+def kb_quiz_choices(qid: int, choices):
+    kb = [[InlineKeyboardButton(c, callback_data=f"quiz:ans|{qid}|{i}")] for i, c in enumerate(choices)]
+    kb.append([InlineKeyboardButton("🏠 الرئيسية", callback_data="home")])
+    return InlineKeyboardMarkup(kb)
+
+
+async def quiz_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    qid = random.randint(0, len(QUIZ_QUESTIONS) - 1)
+    item = QUIZ_QUESTIONS[qid]
+    context.user_data["quiz_qid"] = qid
+
+    text = "📝 **اختبار قصير**\n\n" + item["q"]
+    await q.message.edit_text(text, reply_markup=kb_quiz_choices(qid, item["choices"]), parse_mode="Markdown")
+
+
+async def quiz_answer_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    # quiz:ans|qid|choice
+    payload = q.data.split(":", 1)[1]
+    _, qid_s, choice_s = payload.split("|")
+    qid = int(qid_s)
+    choice = int(choice_s)
+
+    item = QUIZ_QUESTIONS[qid]
+    correct = int(item["answer"])
+    pts = int(item.get("points", 1))
+
+    user_id = update.effective_user.id
+    profile = get_profile(user_id)
+
+    is_right = (choice == correct)
+    gained = pts if is_right else 0
+
+    before = int(profile.get("points", 0))
+    profile["points"] = before + gained
+    profile["last_quiz"] = datetime.utcnow().isoformat()
+
+    badges = set(profile.get("badges", []))
+    new_badges = []
+    for threshold, badge in ACHIEVEMENTS:
+        if profile["points"] >= threshold and badge not in badges:
+            badges.add(badge)
+            new_badges.append(badge)
+
+    profile["badges"] = sorted(list(badges))
+    set_profile(user_id, profile)
+
+    if is_right:
+        result = f"✅ إجابة صحيحة! +{gained} نقطة"
+    else:
+        result = f"❌ إجابة خاطئة.\n✅ الصحيح هو: **{item['choices'][correct]}**"
+
+    extra = ""
+    if new_badges:
+        extra = "\n\n🏆 " + "\n🏆 ".join(new_badges)
+
+    text = (
+        f"📝 **اختبار قصير**\n\n"
+        f"{item['q']}\n\n"
+        f"النتيجة: {result}\n"
+        f"⭐ نقاطك الآن: **{profile['points']}**"
+        f"{extra}\n\n"
+        "اضغط لبدء اختبار جديد:"
+    )
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔁 اختبار جديد", callback_data="quiz:start")],
+        [InlineKeyboardButton("🏆 نقاطي/إنجازاتي", callback_data="me:points")],
+        [InlineKeyboardButton("🏠 الرئيسية", callback_data="home")],
+    ])
+
+    await q.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+
+
+async def my_points_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    profile = get_profile(update.effective_user.id)
+    badges = profile.get("badges", [])
+    badges_text = "\n".join(badges) if badges else "لا توجد إنجازات بعد."
+
+    text = (
+        "🏆 **نقاطي/إنجازاتي**\n\n"
+        f"⭐ النقاط: **{profile.get('points', 0)}**\n\n"
+        f"🎖️ الإنجازات:\n{badges_text}"
+    )
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📝 اختبار قصير", callback_data="quiz:start")],
+        [InlineKeyboardButton("🏠 الرئيسية", callback_data="home")],
+    ])
+    await q.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+
+
+# ====== التقويم بالأزرار ======
+async def cal_home_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    cal = load_calendar()
+    kb = [[InlineKeyboardButton(k, callback_data=f"cal:item|{k}")] for k in cal.keys()]
+    kb.append([InlineKeyboardButton("🏠 الرئيسية", callback_data="home")])
+    await q.message.edit_text("🗓️ **التقويم الجامعي**\nاختر القسم:", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+
+
+async def cal_item_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    payload = q.data.split(":", 1)[1]   # item|KEY
+    _, key = payload.split("|", 1)
+
+    cal = load_calendar()
+    text = cal.get(key, "لا توجد معلومات بعد.")
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⬅️ رجوع", callback_data="cal:home")],
+        [InlineKeyboardButton("🏠 الرئيسية", callback_data="home")],
+    ])
+    await q.message.edit_text(f"🗓️ **{key}**\n\n{text}", reply_markup=kb, parse_mode="Markdown")
+
+
+# ====== الأزرار (الدروس + المزايا) ======
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     data = q.data
 
+    # ===== الرئيسية =====
     if data == "home":
         return await show_home(update, context)
 
+    # ===== Quiz =====
+    if data == "quiz:start":
+        return await quiz_start_cb(update, context)
+    if data.startswith("quiz:ans|"):
+        return await quiz_answer_cb(update, context)
+    if data == "me:points":
+        return await my_points_cb(update, context)
+
+    # ===== Calendar =====
+    if data == "cal:home":
+        return await cal_home_cb(update, context)
+    if data.startswith("cal:item|"):
+        return await cal_item_cb(update, context)
+
+    # ===== الدروس (كما هو عندك) =====
     if data == "years":
         context.user_data.clear()
         return await q.message.edit_text("📘 اختر السنة:", reply_markup=kb_years())
@@ -452,6 +705,7 @@ def build_app():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("broadcast", broadcast, filters=filters.Chat(ADMIN_CHAT_ID)))
     app.add_handler(CommandHandler("getid", getid))
+    app.add_handler(CommandHandler("setcal", setcal, filters=filters.Chat(ADMIN_CHAT_ID)))
 
     app.add_handler(CallbackQueryHandler(buttons))
 
@@ -459,6 +713,11 @@ def build_app():
     app.add_handler(MessageHandler(filters.Chat(ADMIN_CHAT_ID) & ~filters.COMMAND, admin_reply))
 
     # أي شيء في الخاص (نص/صورة/ملف...) يروح للمشرفين
-    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND & filters.ALL, student_message))
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, student_message))
 
     return app
+
+
+if __name__ == "__main__":
+    app = build_app()
+    app.run_polling()
