@@ -1,7 +1,9 @@
 import os
 import json
 import random
-from datetime import datetime
+import asyncio
+from datetime import datetime, date
+from zoneinfo import ZoneInfo
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -24,6 +26,10 @@ USERS_FILE = "users.json"            # قائمة الطلاب (للبث)
 
 POINTS_FILE = "points.json"          # نقاط الطلاب
 CAL_FILE = "calendar.json"           # التقويم الجامعي
+
+# ====== جدولة الرسائل اليومية ======
+TZ = ZoneInfo("Africa/Algiers")
+SCHED_FILE = "schedule_state.json"   # لتسجيل ما أُرسل اليوم حتى لا يتكرر
 
 
 # ====== بنك أسئلة (Quiz) ======
@@ -56,8 +62,8 @@ QUIZ_QUESTIONS = [
 
 ACHIEVEMENTS = [
     (10, "🥉 إنجاز: مجتهد (10 نقاط)"),
-    (25, "🥈 إنجاز: متفوق (25 نقطة)"),
-    (50, "🥇 إنجاز: نجم الشريعة (50 نقطة)"),
+    (25, "🥈 إنجاز: متفوق (25 نقاط)"),
+    (50, "🥇 إنجاز: نجم الشريعة (50 نقاط)"),
 ]
 
 
@@ -157,6 +163,98 @@ def is_http(s: str) -> bool:
     return isinstance(s, str) and (s.startswith("http://") or s.startswith("https://"))
 
 
+# ====== جدولة: حالة الإرسال اليومي ======
+def load_sched_state():
+    # {"2026-02-20": {"morning": true, "wird": true, "evening": true, "hadith": true}}
+    st = _load_json(SCHED_FILE, {})
+    if not isinstance(st, dict):
+        st = {}
+    return st
+
+
+def save_sched_state(st: dict):
+    _save_json(SCHED_FILE, st)
+
+
+async def broadcast_to_all(bot, text: str):
+    users = load_users()
+    for chat_id in list(users):
+        try:
+            await bot.send_message(chat_id=chat_id, text=text)
+        except Forbidden:
+            pass
+        except Exception:
+            pass
+
+
+async def scheduler_loop(app: Application):
+    """
+    يفحص الوقت كل 30 ثانية (بتوقيت الجزائر)
+    ويرسل:
+    07:00 أذكار الصباح
+    10:00 ورد اليوم (آيات مكتوبة)
+    17:00 أذكار المساء
+    20:00 حديث اليوم
+    """
+    while True:
+        try:
+            now = datetime.now(TZ)
+            today = now.date().isoformat()
+
+            st = load_sched_state()
+            if today not in st:
+                st[today] = {}
+            sent = st[today]
+
+            # 07:00 أذكار الصباح
+            if now.hour == 7 and now.minute == 0 and not sent.get("morning"):
+                msg = "🌿 لا تنسَ أذكار الصباح\n\nاللهم بك أصبحنا وبك أمسينا وبك نحيا وبك نموت وإليك النشور."
+                await broadcast_to_all(app.bot, msg)
+                sent["morning"] = True
+                save_sched_state(st)
+
+            # 10:00 ورد اليوم (نص من التقويم - نستخدم قسم موجود أو نضعه في العطل/آخر الآجال... الأفضل نضيف قسم خاص)
+            if now.hour == 10 and now.minute == 0 and not sent.get("wird"):
+                cal = load_calendar()
+                wird_text = cal.get("📖 ورد اليوم", None)
+                if not wird_text:
+                    wird_text = "📖 ورد اليوم\n\nلم يتم ضبط ورد اليوم بعد.\nيمكن للمشرف ضبطه بـ:\n/setcal 📖 ورد اليوم | (ضع الآيات هنا)"
+                else:
+                    wird_text = f"📖 ورد اليوم\n\n{wird_text}"
+                await broadcast_to_all(app.bot, wird_text)
+                sent["wird"] = True
+                save_sched_state(st)
+
+            # 17:00 أذكار المساء
+            if now.hour == 17 and now.minute == 0 and not sent.get("evening"):
+                msg = "🌙 لا تنسَ أذكار المساء\n\nاللهم بك أمسينا وبك أصبحنا وبك نحيا وبك نموت وإليك المصير."
+                await broadcast_to_all(app.bot, msg)
+                sent["evening"] = True
+                save_sched_state(st)
+
+            # 20:00 حديث اليوم (نص من التقويم كذلك)
+            if now.hour == 20 and now.minute == 0 and not sent.get("hadith"):
+                cal = load_calendar()
+                hadith_text = cal.get("📜 حديث اليوم", None)
+                if not hadith_text:
+                    hadith_text = "📜 حديث اليوم\n\nلم يتم ضبط حديث اليوم بعد.\nيمكن للمشرف ضبطه بـ:\n/setcal 📜 حديث اليوم | (ضع الحديث هنا)"
+                else:
+                    hadith_text = f"📜 حديث اليوم\n\n{hadith_text}"
+                await broadcast_to_all(app.bot, hadith_text)
+                sent["hadith"] = True
+                save_sched_state(st)
+
+        except Exception:
+            pass
+
+        await asyncio.sleep(30)
+
+
+async def post_init(app: Application):
+    # تشغيل الجدولة في الخلفية
+    app.create_task(scheduler_loop(app))
+
+
 # ====== لوحات المفاتيح ======
 def kb_home():
     return InlineKeyboardMarkup([
@@ -199,11 +297,6 @@ def kb_subjects(year: str, spec: str, sem: str):
 
 
 def kb_lessons(items):
-    """
-    items: list of tuples (title, value)
-      - if value is http(s) => open link
-      - else => treat as Telegram file_id and send by callback
-    """
     kb = []
     for i, (title, value) in enumerate(items):
         if is_http(value):
@@ -233,7 +326,6 @@ async def show_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat and update.effective_chat.type == "private":
         add_user(update.effective_chat.id)
 
-    # تنظيف حالة التصفح
     context.user_data.pop("year", None)
     context.user_data.pop("spec", None)
     context.user_data.pop("sem", None)
@@ -251,13 +343,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await show_home(update, context)
 
 
-# ====== /getid (استخراج file_id للـ PDF) ======
+# ====== /getid ======
 async def getid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if not msg:
         return
 
-    # فقط المشرفين أو داخل مجموعة المشرفين
     if update.effective_user.id not in ADMIN_USER_IDS and update.effective_chat.id != ADMIN_CHAT_ID:
         return
 
@@ -265,7 +356,6 @@ async def getid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("✅ ارسل ملف PDF ثم اعمل عليه Reply واكتب /getid")
         return
 
-    # لازم يكون PDF كـ document
     if msg.reply_to_message.document:
         doc = msg.reply_to_message.document
         await msg.reply_text(
@@ -275,12 +365,12 @@ async def getid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await msg.reply_text("⚠️ الرسالة التي رددت عليها ليست ملف PDF (Document). أرسل الـ PDF كـ ملف ثم أعد المحاولة.")
+    await msg.reply_text("⚠️ الرسالة التي رددت عليها ليست ملف PDF (Document).")
 
 
-# ====== التقويم: /setcal (للمشرف) ======
-# الصيغة:
-# /setcal 📌 مواعيد الامتحانات | امتحان السداسي الأول: 20/03 ...
+# ====== التقويم: /setcal ======
+# /setcal 📖 ورد اليوم | (الآيات)
+# /setcal 📜 حديث اليوم | (الحديث)
 async def setcal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_CHAT_ID:
         return
@@ -320,7 +410,6 @@ async def quiz_answer_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
-    # quiz:ans|qid|choice
     payload = q.data.split(":", 1)[1]
     _, qid_s, choice_s = payload.split("|")
     qid = int(qid_s)
@@ -412,7 +501,7 @@ async def cal_item_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
-    payload = q.data.split(":", 1)[1]   # item|KEY
+    payload = q.data.split(":", 1)[1]
     _, key = payload.split("|", 1)
 
     cal = load_calendar()
@@ -431,11 +520,10 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     data = q.data
 
-    # ===== الرئيسية =====
     if data == "home":
         return await show_home(update, context)
 
-    # ===== Quiz =====
+    # Quiz
     if data == "quiz:start":
         return await quiz_start_cb(update, context)
     if data.startswith("quiz:ans|"):
@@ -443,13 +531,13 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "me:points":
         return await my_points_cb(update, context)
 
-    # ===== Calendar =====
+    # Calendar
     if data == "cal:home":
         return await cal_home_cb(update, context)
     if data.startswith("cal:item|"):
         return await cal_item_cb(update, context)
 
-    # ===== الدروس (كما هو عندك) =====
+    # الدروس
     if data == "years":
         context.user_data.clear()
         return await q.message.edit_text("📘 اختر السنة:", reply_markup=kb_years())
@@ -537,7 +625,6 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=kb_lessons(items)
         )
 
-    # إرسال PDF عند الضغط على زر file:<i>
     if data.startswith("file:"):
         i = int(data.split(":", 1)[1])
         items = context.user_data.get("lesson_items", [])
@@ -637,7 +724,6 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("لا يوجد طلاب مسجلين بعد. اطلب منهم إرسال /start للبوت.")
         return
 
-    # بث نص
     if context.args:
         text = " ".join(context.args).strip()
         ok = 0
@@ -661,7 +747,6 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ تم الإرسال إلى: {ok}\n⚠️ فشل/محظور: {bad}")
         return
 
-    # بث Reply (صورة/ملف...)
     if update.message.reply_to_message:
         src = update.message.reply_to_message
         ok = 0
@@ -700,7 +785,8 @@ def build_app():
     if not token:
         raise RuntimeError("BOT_TOKEN is missing. Set it in Render Environment Variables.")
 
-    app = Application.builder().token(token).build()
+    # ✅ post_init لتشغيل scheduler بدون job_queue
+    app = Application.builder().token(token).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("broadcast", broadcast, filters=filters.Chat(ADMIN_CHAT_ID)))
@@ -709,10 +795,7 @@ def build_app():
 
     app.add_handler(CallbackQueryHandler(buttons))
 
-    # ردود المشرفين في المجموعة (بالـ Reply)
     app.add_handler(MessageHandler(filters.Chat(ADMIN_CHAT_ID) & ~filters.COMMAND, admin_reply))
-
-    # أي شيء في الخاص (نص/صورة/ملف...) يروح للمشرفين
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, student_message))
 
     return app
