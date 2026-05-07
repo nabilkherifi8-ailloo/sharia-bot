@@ -1,4 +1,4 @@
-import os
+rt os
 import json
 import random
 import asyncio
