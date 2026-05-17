@@ -10,7 +10,15 @@ LESSONS = {
             "السداسي الأول": {
                 "عقيدة 1":              [],
                 "أصول الفقه 2":         [],
-                "فقه العبادات 1":       [],
+                "فقه العبادات 1": [
+                    ("📄 فقه العبادات 1 - ملف 1", "BQACAgQAAxkBAAIDiGoJ15CqCSViI7LWiFFSlZdSdmRCAALNGgACVKHQU7Aohv6OPwFzOwQ"),
+                    ("📄 فقه العبادات 1 - ملف 2", "BQACAgQAAxkBAAIDiWoJ15DKa0o362AO-OIgDcWxzOLYAALqHAACzkYIUE96bSctfoXGOwQ"),
+                    ("📄 فقه العبادات 1 - ملف 3", "BQACAgQAAxkBAAIDimoJ15AK_1kmS_HedAHX411FlOcaAALrHAACzkYIUDQLTUj7HC30OwQ"),
+                    ("📄 فقه العبادات 1 - ملف 4", "BQACAgQAAxkBAAIDi2oJ15DuoHph8tY6BYwXtLZT8FvaAALsHAACzkYIUBzb9tcilvXmOwQ"),
+                    ("📄 فقه العبادات 1 - ملف 5", "BQACAgQAAxkBAAIDjGoJ15A449vZMCiV2vOx8o_MxPTZAALjGgACmNhQUCgvZf1awZvoOwQ"),
+                    ("📄 فقه العبادات 1 - ملف 6", "BQACAgQAAxkBAAIDjWoJ15D-oMrHB8ZB-nOTo4qWvT9GAAL-GwACboTAUIFCyf1i2wq9OwQ"),
+                    ("📄 فقه العبادات 1 - ملف 7", "BQACAgQAAxkBAAIDjmoJ15AxP0h2hTNapesarwABGRm6mgACdBoAAiLqKFG6zDGYKuMErTsE"),
+                ],
                 "لغة عربية":            [],
                 "علوم القرآن":          [],
                 "تاريخ إسلامي":         [],
