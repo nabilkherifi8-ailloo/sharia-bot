@@ -1,3 +1,7 @@
+# =============================================================
+#  render_webhook.py  —  سيرفر Webhook لـ Render
+# =============================================================
+
 import os
 import asyncio
 from starlette.applications import Starlette
@@ -10,42 +14,40 @@ from bot import build_app
 
 
 def _clean(s: str) -> str:
-    """إزالة كل whitespace بما فيه \n \r \t والمسافات."""
-    if not s:
-        return ""
-    return "".join(str(s).strip().split())
+    return "".join(str(s).strip().split()) if s else ""
 
 
-def get_public_base_url() -> str:
-    # Render يوفر غالبًا hostname نظيف:
-    host = _clean(os.environ.get("RENDER_EXTERNAL_HOSTNAME", ""))
-    url = _clean(os.environ.get("RENDER_EXTERNAL_URL", ""))
-    manual = _clean(os.environ.get("PUBLIC_BASE_URL", ""))  # اختياري لو احتجناه
+def get_webhook_url() -> str:
+    """يستخرج الـ URL العام من متغيرات بيئة Render"""
+    manual   = _clean(os.environ.get("PUBLIC_BASE_URL", ""))
+    ext_url  = _clean(os.environ.get("RENDER_EXTERNAL_URL", ""))
+    hostname = _clean(os.environ.get("RENDER_EXTERNAL_HOSTNAME", ""))
 
-    base = manual or url or (f"https://{host}" if host else "")
+    base = manual or ext_url or (f"https://{hostname}" if hostname else "")
     if base and not base.startswith("http"):
         base = "https://" + base
     return base.rstrip("/")
 
 
-PORT = int(os.environ.get("PORT", "10000"))
-ptb_app = build_app()  # build_app الآن ينظف التوكن بنفسه
+PORT    = int(os.environ.get("PORT", "10000"))
+ptb_app = build_app()
 
 
-async def telegram(request):
-    data = await request.json()
+# ── مسارات Starlette ──
+async def telegram_webhook(request):
+    data   = await request.json()
     update = Update.de_json(data=data, bot=ptb_app.bot)
     await ptb_app.update_queue.put(update)
     return Response(status_code=200)
 
 
-async def health(_):
-    return PlainTextResponse("OK")
+async def health_check(_):
+    return PlainTextResponse("OK ✅")
 
 
 starlette_app = Starlette(routes=[
-    Route("/telegram", telegram, methods=["POST"]),
-    Route("/health", health, methods=["GET"]),
+    Route("/telegram", telegram_webhook, methods=["POST"]),
+    Route("/health",   health_check,     methods=["GET"]),
 ])
 
 
@@ -53,26 +55,34 @@ async def main():
     await ptb_app.initialize()
     await ptb_app.start()
 
-    base_url = get_public_base_url()
-    if not base_url:
+    webhook_url = get_webhook_url()
+    if not webhook_url:
         raise RuntimeError(
-            "Public URL not found. On Render Web Services, RENDER_EXTERNAL_HOSTNAME should exist. "
-            "If it doesn't, set PUBLIC_BASE_URL manually (e.g., https://your-service.onrender.com)."
+            "تعذّر تحديد الـ URL العام.\n"
+            "تأكد من وجود RENDER_EXTERNAL_HOSTNAME في متغيرات بيئة Render،\n"
+            "أو أضف PUBLIC_BASE_URL يدوياً."
         )
 
-    webhook_url = f"{base_url}/telegram"
-    print("PUBLIC_BASE_URL =", repr(base_url))
-    print("WEBHOOK_URL     =", repr(webhook_url))
+    full_webhook = f"{webhook_url}/telegram"
+    print(f"🌐 Webhook URL : {full_webhook}")
 
-    # حتى لو فشل set_webhook لا نجعل السيرفر ينهار
     try:
-        await ptb_app.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES)
+        await ptb_app.bot.set_webhook(
+            url=full_webhook,
+            allowed_updates=Update.ALL_TYPES
+        )
+        print("✅ Webhook set successfully")
     except Exception as e:
-        print("WARNING: set_webhook failed:", repr(e))
+        print(f"⚠️  set_webhook failed: {e}")
 
-    config = uvicorn.Config(app=starlette_app, host="0.0.0.0", port=PORT, log_level="info", use_colors=False)
-    server = uvicorn.Server(config=config)
-    await server.serve()
+    config = uvicorn.Config(
+        app=starlette_app,
+        host="0.0.0.0",
+        port=PORT,
+        log_level="info",
+        use_colors=False
+    )
+    await uvicorn.Server(config).serve()
 
 
 if __name__ == "__main__":
