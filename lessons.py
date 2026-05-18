@@ -9,7 +9,9 @@ LESSONS = {
         "بدون تخصص": {
             "السداسي الأول": {
                 "عقيدة 1":              [],
-                "أصول الفقه 2":         [],
+                "أصول الفقه 2": [
+                    ("📄 أصول الفقه 2 - ملف 1", "BQACAgQAAxkBAAIDomoJ7tg60GgEM_iZToCTneGuGXx8AAIDGwACsOdRUvjjhRbfTTnWOwQ"),
+                ],
                 "فقه العبادات 1": [
                     ("📄 فقه العبادات 1 - ملف 1", "BQACAgQAAxkBAAIDiGoJ15CqCSViI7LWiFFSlZdSdmRCAALNGgACVKHQU7Aohv6OPwFzOwQ"),
                     ("📄 فقه العبادات 1 - ملف 2", "BQACAgQAAxkBAAIDiWoJ15DKa0o362AO-OIgDcWxzOLYAALqHAACzkYIUE96bSctfoXGOwQ"),
@@ -26,9 +28,9 @@ LESSONS = {
                 "منهجية البحث":         [],
                 "لغة انجليزية":         [],
                 "إعلام آلي":            [],
-                "ترتيل وحفظ القرآن":   [],
-            },
-            "السداسي الثاني": {
+                "ترتيل وحفظ القرآن": [
+                    ("📄 ترتيل وحفظ القرآن - ملف 1", "BQACAgQAAxkBAAIDoGoJ7oz8sz9aedlcgyhgccgMITHcAAL3GQAC507ZUAa6fK0UCcf0OwQ"),
+                ], {
                 "عقيدة 1":              [],
                 "فقه العبادات 2":       [],
                 "لغة عربية":            [],
@@ -94,11 +96,20 @@ LESSONS = {
                 "ترتيل وحفظ القرآن":               [],
                 "العقيدة الإسلامية":                [],
                 "مناهج المحدثين":                   [],
-                "مناهج المفسرين":                   [],
+                "مناهج المفسرين": [
+                    ("📄 مناهج المفسرين - ملف 1", "BQACAgQAAxkBAAIDrGoK4E8KcJawLqHLNrqSYsITkHFkAAJSHAACoKeIUuAL84hWTPdvOwQ"),
+                ],
                 "مقارنة أديان":                     [],
-                "الأصول المنهجية للفرق الإسلامية":  [],
+                "الأصول المنهجية للفرق الإسلامية": [
+                    ("📄 الأصول المنهجية - ملف 1", "BQACAgQAAxkBAAIDrmoK4E9Y8GkB1qtLVvNglxDPTCPHAAJ9IAAChNchUxTyleFkp8c4OwQ"),
+                ],
                 "منهجية تخريج الحديث":              [],
-                "أعلام الدعوة":                     [],
+                "أعلام الدعوة": [
+                    ("📄 أعلام الدعوة - ملف 1", "BQACAgQAAxkBAAIDrWoK4E8a8T8IoD8SxU1GyMG9ZlXwAAJeIAAChNchUyrfBKQcuEh6OwQ"),
+                ],
+                "المنطق ومناهج البحث": [
+                    ("📄 المنطق ومناهج البحث - ملف 1", "BQACAgQAAxkBAAIDq2oK4E-oR7W3IWS4yqaZaBqrODtOAAKjHQACuA9YUDPrmcviF3mLOwQ"),
+                ],
                 "فقه المعاملات":                    [],
                 "البلاغة":                          [],
                 "لغة اجنبية":                       [],
