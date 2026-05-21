@@ -1,118 +1,146 @@
-# =============================================================
-#  lessons.py  —  البيانات الأولية للدروس
-#  ⚠️ هذا الملف يُستخدم مرة واحدة فقط لتهيئة lessons_data.json
-#  بعد أول تشغيل، تُضاف الدروس عبر الأمر /adddars في التيليغرام
-# =============================================================
+# ================================================================
+#  lessons.py — البيانات الأولية للدروس
+#  ⚠️ يُستخدم هذا الملف مرة واحدة فقط عند أول تشغيل
+#  لتهيئة ملف lessons_data.json
+#  بعدها تُدار الدروس كاملاً عبر أوامر البوت:
+#  /adddars  /listdars  /deldars
+# ================================================================
 
 LESSONS = {
-    "سنة أولى": {
+
+    # ════════════════════════════════
+    #  السنة الأولى
+    # ════════════════════════════════
+    "📗 سنة أولى": {
         "بدون تخصص": {
-            "السداسي الأول": {
-                "عقيدة 1":              [],
+
+            "📘 السداسي الأول": {
+                "عقيدة 1":            [],
                 "أصول الفقه 2": [
-                    ("📄 أصول الفقه 2 - ملف 1", "BQACAgQAAxkBAAIDomoJ7tg60GgEM_iZToCTneGuGXx8AAIDGwACsOdRUvjjhRbfTTnWOwQ"),
+                    ("📄 أصول الفقه 2 - ملف 1",
+                     "BQACAgQAAxkBAAIDomoJ7tg60GgEM_iZToCTneGuGXx8AAIDGwACsOdRUvjjhRbfTTnWOwQ"),
                 ],
                 "فقه العبادات 1": [
-                    ("📄 فقه العبادات 1 - ملف 1", "BQACAgQAAxkBAAIDiGoJ15CqCSViI7LWiFFSlZdSdmRCAALNGgACVKHQU7Aohv6OPwFzOwQ"),
-                    ("📄 فقه العبادات 1 - ملف 2", "BQACAgQAAxkBAAIDiWoJ15DKa0o362AO-OIgDcWxzOLYAALqHAACzkYIUE96bSctfoXGOwQ"),
-                    ("📄 فقه العبادات 1 - ملف 3", "BQACAgQAAxkBAAIDimoJ15AK_1kmS_HedAHX411FlOcaAALrHAACzkYIUDQLTUj7HC30OwQ"),
-                    ("📄 فقه العبادات 1 - ملف 4", "BQACAgQAAxkBAAIDi2oJ15DuoHph8tY6BYwXtLZT8FvaAALsHAACzkYIUBzb9tcilvXmOwQ"),
-                    ("📄 فقه العبادات 1 - ملف 5", "BQACAgQAAxkBAAIDjGoJ15A449vZMCiV2vOx8o_MxPTZAALjGgACmNhQUCgvZf1awZvoOwQ"),
-                    ("📄 فقه العبادات 1 - ملف 6", "BQACAgQAAxkBAAIDjWoJ15D-oMrHB8ZB-nOTo4qWvT9GAAL-GwACboTAUIFCyf1i2wq9OwQ"),
-                    ("📄 فقه العبادات 1 - ملف 7", "BQACAgQAAxkBAAIDjmoJ15AxP0h2hTNapesarwABGRm6mgACdBoAAiLqKFG6zDGYKuMErTsE"),
+                    ("📄 فقه العبادات 1 - ملف 1",
+                     "BQACAgQAAxkBAAIDiGoJ15CqCSViI7LWiFFSlZdSdmRCAALNGgACVKHQU7Aohv6OPwFzOwQ"),
+                    ("📄 فقه العبادات 1 - ملف 2",
+                     "BQACAgQAAxkBAAIDiWoJ15DKa0o362AO-OIgDcWxzOLYAALqHAACzkYIUE96bSctfoXGOwQ"),
+                    ("📄 فقه العبادات 1 - ملف 3",
+                     "BQACAgQAAxkBAAIDimoJ15AK_1kmS_HedAHX411FlOcaAALrHAACzkYIUDQLTUj7HC30OwQ"),
+                    ("📄 فقه العبادات 1 - ملف 4",
+                     "BQACAgQAAxkBAAIDi2oJ15DuoHph8tY6BYwXtLZT8FvaAALsHAACzkYIUBzb9tcilvXmOwQ"),
+                    ("📄 فقه العبادات 1 - ملف 5",
+                     "BQACAgQAAxkBAAIDjGoJ15A449vZMCiV2vOx8o_MxPTZAALjGgACmNhQUCgvZf1awZvoOwQ"),
+                    ("📄 فقه العبادات 1 - ملف 6",
+                     "BQACAgQAAxkBAAIDjWoJ15D-oMrHB8ZB-nOTo4qWvT9GAAL-GwACboTAUIFCyf1i2wq9OwQ"),
+                    ("📄 فقه العبادات 1 - ملف 7",
+                     "BQACAgQAAxkBAAIDjmoJ15AxP0h2hTNapesarwABGRm6mgACdBoAAiLqKFG6zDGYKuMErTsE"),
                 ],
                 "لغة عربية":            [],
-                "علوم القرآن":          [],
-                "تاريخ إسلامي":         [],
-                "علوم التربية":         [],
-                "منهجية البحث":         [],
-                "لغة انجليزية":         [],
-                "إعلام آلي":            [],
+                "علوم القرآن":           [],
+                "تاريخ إسلامي":          [],
+                "علوم التربية":          [],
+                "منهجية البحث":          [],
+                "لغة إنجليزية":          [],
+                "إعلام آلي":             [],
                 "ترتيل وحفظ القرآن": [
-                    ("📄 ترتيل وحفظ القرآن - ملف 1", "BQACAgQAAxkBAAIDoGoJ7oz8sz9aedlcgyhgccgMITHcAAL3GQAC507ZUAa6fK0UCcf0OwQ"),
-                ], {
-                "عقيدة 1":              [],
-                "فقه العبادات 2":       [],
-                "لغة عربية":            [],
-                "ترتيل وحفظ القرآن":   [],
-                "علوم الحديث":          [],
-                "العلوم القانونية":     [],
-                "تاريخ إسلامي": [
-                    ("📄 تاريخ إسلامي - ملف 1", "BQACAgQAAxkBAAIDZmoJ06ayGdWFeEa-xN6zjZbTGxl5AAJWHwACwoNQUGzHy5nVGpHFOwQ"),
+                    ("📄 ترتيل وحفظ القرآن - ملف 1",
+                     "BQACAgQAAxkBAAIDoGoJ7oz8sz9aedlcgyhgccgMITHcAAL3GQAC507ZUAa6fK0UCcf0OwQ"),
                 ],
-                "علم الدعوة":           [],
-                "مقارنة أديان":         [],
-                "لغة انجليزية":         [],
-                "إعلام آلي":            [],
+            },
+
+            "📙 السداسي الثاني": {
+                "عقيدة 1":             [],
+                "فقه العبادات 2":      [],
+                "لغة عربية":           [],
+                "ترتيل وحفظ القرآن":  [],
+                "علوم الحديث":         [],
+                "العلوم القانونية":    [],
+                "تاريخ إسلامي": [
+                    ("📄 تاريخ إسلامي - ملف 1",
+                     "BQACAgQAAxkBAAIDZmoJ06ayGdWFeEa-xN6zjZbTGxl5AAJWHwACwoNQUGzHy5nVGpHFOwQ"),
+                ],
+                "علم الدعوة":          [],
+                "مقارنة أديان":        [],
+                "لغة إنجليزية":        [],
+                "إعلام آلي":           [],
             },
         }
     },
 
-    "سنة ثانية": {
+    # ════════════════════════════════
+    #  السنة الثانية
+    # ════════════════════════════════
+    "📘 سنة ثانية": {
+
         "شعبة أصول الفقه": {
-            "السداسي الثالث": {
-                "ترتيل وحفظ القرآن":           [],
-                "اصول الفقه":                   [],
-                "فقه المعاملات":                [],
-                "نظرية الحق":                   [],
-                "مدخل إلى حقوق الإنسان":       [],
-                "مناهج البحث في الشريعة":       [],
-                "ايات الأحكام":                 [],
-                "السياسة الشرعية":              [],
-                "نحو وصرف":                     [],
-                "فكر إسلامي":                   [],
-                "لغة اجنبية":                   [],
+            "📗 السداسي الثالث": {
+                "ترتيل وحفظ القرآن":         [],
+                "أصول الفقه":                [],
+                "فقه المعاملات":             [],
+                "نظرية الحق":               [],
+                "مدخل إلى حقوق الإنسان":    [],
+                "مناهج البحث في الشريعة":   [],
+                "آيات الأحكام":             [],
+                "السياسة الشرعية":          [],
+                "نحو وصرف":                 [],
+                "فكر إسلامي":               [],
+                "لغة أجنبية":               [],
             },
-            "السداسي الرابع": {
+            "📙 السداسي الرابع": {
                 "ترتيل وحفظ القرآن":   [],
-                "اصول الفقه":           [],
-                "فقه الأسرة":           [],
-                "نظرية الالتزام":       [],
-                "مالية عامة":           [],
-                "تاريخ التشريع":        [],
-                "القواعد الفقهية":      [],
-                "القانون الدستوري":     [],
-                "البلاغة":              [],
-                "الحضارة الإسلامية":    [],
-                "لغة اجنبية":           [],
+                "أصول الفقه":          [],
+                "فقه الأسرة":          [],
+                "نظرية الالتزام":      [],
+                "مالية عامة":          [],
+                "تاريخ التشريع":       [],
+                "القواعد الفقهية":     [],
+                "القانون الدستوري":    [],
+                "البلاغة":             [],
+                "الحضارة الإسلامية":   [],
+                "لغة أجنبية":          [],
             },
         },
 
-        "شعبة اصول الدين": {
-            "السداسي الثالث": {
-                "ترتيل وحفظ القرآن":               [],
-                "العقيدة الإسلامية":                [],
-                "حديث تحليلي":                      [],
-                "تفسير تحليلي":                     [],
-                "مناهج الدعوة":                     [],
-                "المنطق ومناهج البحث":              [],
-                "الفكر الإسلامي":                   [],
-                "اصول الفقه":                       [],
-                "فقه الأسرة":                       [],
-                "نحو وصرف":                         [],
-                "لغة اجنبية":                       [],
+        "شعبة أصول الدين": {
+            "📗 السداسي الثالث": {
+                "ترتيل وحفظ القرآن":     [],
+                "العقيدة الإسلامية":      [],
+                "حديث تحليلي":            [],
+                "تفسير تحليلي":           [],
+                "مناهج الدعوة":           [],
+                "المنطق ومناهج البحث":    [],
+                "الفكر الإسلامي":         [],
+                "أصول الفقه":             [],
+                "فقه الأسرة":             [],
+                "نحو وصرف":               [],
+                "لغة أجنبية":             [],
             },
-            "السداسي الرابع": {
-                "ترتيل وحفظ القرآن":               [],
-                "العقيدة الإسلامية":                [],
-                "مناهج المحدثين":                   [],
+            "📙 السداسي الرابع": {
+                "ترتيل وحفظ القرآن":              [],
+                "العقيدة الإسلامية":               [],
+                "مناهج المحدثين":                  [],
                 "مناهج المفسرين": [
-                    ("📄 مناهج المفسرين - ملف 1", "BQACAgQAAxkBAAIDrGoK4E8KcJawLqHLNrqSYsITkHFkAAJSHAACoKeIUuAL84hWTPdvOwQ"),
+                    ("📄 مناهج المفسرين - ملف 1",
+                     "BQACAgQAAxkBAAIDrGoK4E8KcJawLqHLNrqSYsITkHFkAAJSHAACoKeIUuAL84hWTPdvOwQ"),
                 ],
-                "مقارنة أديان":                     [],
+                "مقارنة أديان":                    [],
                 "الأصول المنهجية للفرق الإسلامية": [
-                    ("📄 الأصول المنهجية - ملف 1", "BQACAgQAAxkBAAIDrmoK4E9Y8GkB1qtLVvNglxDPTCPHAAJ9IAAChNchUxTyleFkp8c4OwQ"),
+                    ("📄 الأصول المنهجية - ملف 1",
+                     "BQACAgQAAxkBAAIDrmoK4E9Y8GkB1qtLVvNglxDPTCPHAAJ9IAAChNchUxTyleFkp8c4OwQ"),
                 ],
-                "منهجية تخريج الحديث":              [],
+                "منهجية تخريج الحديث":             [],
                 "أعلام الدعوة": [
-                    ("📄 أعلام الدعوة - ملف 1", "BQACAgQAAxkBAAIDrWoK4E8a8T8IoD8SxU1GyMG9ZlXwAAJeIAAChNchUyrfBKQcuEh6OwQ"),
+                    ("📄 أعلام الدعوة - ملف 1",
+                     "BQACAgQAAxkBAAIDrWoK4E8a8T8IoD8SxU1GyMG9ZlXwAAJeIAAChNchUyrfBKQcuEh6OwQ"),
                 ],
                 "المنطق ومناهج البحث": [
-                    ("📄 المنطق ومناهج البحث - ملف 1", "BQACAgQAAxkBAAIDq2oK4E-oR7W3IWS4yqaZaBqrODtOAAKjHQACuA9YUDPrmcviF3mLOwQ"),
+                    ("📄 المنطق ومناهج البحث - ملف 1",
+                     "BQACAgQAAxkBAAIDq2oK4E-oR7W3IWS4yqaZaBqrODtOAAKjHQACuA9YUDPrmcviF3mLOwQ"),
                 ],
-                "فقه المعاملات":                    [],
-                "البلاغة":                          [],
-                "لغة اجنبية":                       [],
+                "فقه المعاملات":                   [],
+                "البلاغة":                         [],
+                "لغة أجنبية":                      [],
             },
         },
     },
