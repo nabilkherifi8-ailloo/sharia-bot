@@ -15,7 +15,10 @@ LESSONS = {
         "بدون تخصص": {
 
             "📘 السداسي الأول": {
-                "عقيدة 1":            [],
+                "عقيدة 1": [
+                    ("📄 عقيدة 1 - ملف 1",
+                     "BQACAgQAAxkBAAID92oO8tk--pIi6CeHvI6JF-vddH9fAALXEwAChhfwUDrXMESQL0F3OwQ"),
+                ],
                 "أصول الفقه 2": [
                     ("📄 أصول الفقه 2 - ملف 1",
                      "BQACAgQAAxkBAAIDomoJ7tg60GgEM_iZToCTneGuGXx8AAIDGwACsOdRUvjjhRbfTTnWOwQ"),
@@ -38,8 +41,14 @@ LESSONS = {
                 ],
                 "لغة عربية":            [],
                 "علوم القرآن":           [],
-                "تاريخ إسلامي":          [],
-                "علوم التربية":          [],
+                "تاريخ إسلامي": [
+                    ("📄 تاريخ إسلامي - ملف 1",
+                     "BQACAgQAAxkBAAID1moO75N5ox_cFq5kvRYI925zJ8FtAAJNGwACT2lgU_WGOylmCfeMOwQ"),
+                ],
+                "علوم التربية": [
+                    ("📄 علوم التربية - ملف 1",
+                     "BQACAgQAAxkBAAID9WoO8kDA1whGx4TjeX3E-TnQEOneAALQGAACumWhU9c4eyx6VwanOwQ"),
+                ],
                 "منهجية البحث":          [],
                 "لغة إنجليزية":          [],
                 "إعلام آلي":             [],
@@ -53,15 +62,38 @@ LESSONS = {
                 "عقيدة 1":             [],
                 "فقه العبادات 2":      [],
                 "لغة عربية":           [],
-                "ترتيل وحفظ القرآن":  [],
-                "علوم الحديث":         [],
-                "العلوم القانونية":    [],
+                "ترتيل وحفظ القرآن": [
+                    ("📄 ترتيل وحفظ القرآن - ملف 1",
+                     "BQACAgQAAxkBAAID8WoO8eSb4n0xd0BG1cxVf7GLx4SCAAIyHQAChyxBU5Pk1UJcuQ1SOwQ"),
+                ],
+                "مدخل إلى علوم الحديث": [
+                    ("📄 مدخل إلى علوم الحديث - ملف 1",
+                     "BQACAgQAAxkBAAID4GoO8Gcat3qNlPt992Ierf6cxmLpAAJzHQACG33gU3yGk2ewnShjOwQ"),
+                    ("📄 مدخل إلى علوم الحديث - ملف 2",
+                     "BQACAgQAAxkBAAID4WoO8GfvzMJsGJOnc3tCBZJCsY8yAAJtHgACQkyZUO8MgqsWPoSEOwQ"),
+                ],
+                "مدخل إلى العلوم القانونية": [
+                    ("📄 مدخل إلى العلوم القانونية - ملف 1",
+                     "BQACAgQAAxkBAAID2GoO7_HnY1f1KWCYE3x8Q2BzadFCAALpHgACREwIUBCNDF8-g4AsOwQ"),
+                    ("📄 مدخل إلى العلوم القانونية - ملف 2",
+                     "BQACAgQAAxkBAAID2WoO7_HTgt4a4CJxiKekuUH2iLx8AALrHgACREwIUF1U4zRDi5QgOwQ"),
+                    ("📄 مدخل إلى العلوم القانونية - ملف 3",
+                     "BQACAgQAAxkBAAID2moO7_GT-4ikaI0VObvk-v9Z0sunAALsHgACREwIUC1bxadDJLfdOwQ"),
+                    ("📄 مدخل إلى العلوم القانونية - ملف 4",
+                     "BQACAgQAAxkBAAID22oO7_GJP75g1pw0cmukzzGkfBQyAALqHgACREwIUNh8SNNzJpeyOwQ"),
+                ],
                 "تاريخ إسلامي": [
                     ("📄 تاريخ إسلامي - ملف 1",
                      "BQACAgQAAxkBAAIDZmoJ06ayGdWFeEa-xN6zjZbTGxl5AAJWHwACwoNQUGzHy5nVGpHFOwQ"),
                 ],
-                "علم الدعوة":          [],
-                "مقارنة أديان":        [],
+                "مدخل إلى علم الدعوة": [
+                    ("📄 مدخل إلى علم الدعوة - ملف 1",
+                     "BQACAgQAAxkBAAID5GoO8Q0HLmwxHB5Jb7yQOjex9TZnAAIoGwACovzYU5cO_MzsGzOXOwQ"),
+                ],
+                "مقارنة أديان": [
+                    ("📄 مقارنة أديان - ملف 1",
+                     "BQACAgQAAxkBAAID-2oO80vMzlPYaWtjWzThGMrAj6_ZAAI3IAACnLQhUIgBtLGNEGspOwQ"),
+                ],
                 "لغة إنجليزية":        [],
                 "إعلام آلي":           [],
             },
@@ -90,8 +122,10 @@ LESSONS = {
             "📙 السداسي الرابع": {
                 "ترتيل وحفظ القرآن":   [],
                 "أصول الفقه":          [],
-                "فقه الأسرة":          [],
-                "نظرية الالتزام":      [],
+                "فقه الأسرة": [
+                    ("📄 فقه الأسرة - ملف 1",
+                     "BQACAgQAAxkBAAIEAAFqDxk5QpjB5Floo9KvRmq0_uaHPgACNB0AAm3CcVBPaVCanRjz7TsE"),
+                ],      [],
                 "مالية عامة":          [],
                 "تاريخ التشريع":       [],
                 "القواعد الفقهية":     [],
@@ -137,6 +171,8 @@ LESSONS = {
                 "المنطق ومناهج البحث": [
                     ("📄 المنطق ومناهج البحث - ملف 1",
                      "BQACAgQAAxkBAAIDq2oK4E-oR7W3IWS4yqaZaBqrODtOAAKjHQACuA9YUDPrmcviF3mLOwQ"),
+                    ("📄 المنطق ومناهج البحث - ملف 2",
+                     "BQACAgQAAxkBAAIEBGoPGhufVgNLxAOd2m-5M7l1T395AAKjHQACuA9YUDPrmcviF3mLOwQ"),
                 ],
                 "فقه المعاملات":                   [],
                 "البلاغة":                         [],
