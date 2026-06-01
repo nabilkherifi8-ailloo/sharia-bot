@@ -26,7 +26,7 @@ from telegram.error import Forbidden, BadRequest
 #  ١. الإعدادات
 # ================================================================
 
-ADMIN_CHAT_ID = -5286458958
+ADMIN_CHAT_ID = -1003784231419
 ADMIN_IDS     = {1490829295}
 
 FILE_MAP      = "msg_map.json"
