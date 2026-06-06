@@ -60,6 +60,68 @@ WILAYAS = {
     "تيزي وزو":        "Tizi Ouzou",
 }
 
+# ================================================================
+#  المساعد الذكي — Anthropic API
+# ================================================================
+
+AI_SYSTEM = """أنت مساعد علمي متخصص في الدراسات الإسلامية، تساعد طلاب كلية الشريعة في جامعة البشير الإبراهيمي بالجزائر.
+
+مهامك:
+- الإجابة على الأسئلة الفقهية وأصول الفقه والحديث والتفسير والعقيدة والتاريخ الإسلامي
+- تقديم إجابات علمية موثوقة ومنهجية تناسب مستوى الطالب الجامعي
+- الاستشهاد بالمذاهب الفقهية الأربعة عند الحاجة
+- شرح المصطلحات الصعبة بأسلوب واضح ومبسّط
+- التنبيه دائماً على ضرورة الرجوع للعلماء في مسائل الفتوى الشخصية
+
+قواعد:
+- أجب باللغة العربية الفصحى دائماً
+- كن دقيقاً ومختصراً مع الشمولية
+- إذا كانت المسألة خلافية، اذكر أبرز الآراء مع أدلتها
+- لا تُفتِ في المسائل الشخصية، بل أحل للعلماء
+- ابدأ إجابتك مباشرة بدون مقدمات طويلة"""
+
+
+async def ask_ai(question: str) -> str:
+    """إرسال سؤال لـ Google Gemini والحصول على إجابة — مجاني تماماً"""
+    api_key = _clean(os.environ.get("GEMINI_API_KEY", ""))
+    if not api_key:
+        return (
+            "⚠️ المساعد الذكي غير مُفعَّل بعد.\n\n"
+            "يرجى إضافة GEMINI_API_KEY في متغيرات Render.\n"
+            "احصل على مفتاح مجاني من:\n"
+            "aistudio.google.com/app/apikey"
+        )
+    try:
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/"
+            f"models/gemini-1.5-flash:generateContent?key={api_key}"
+        )
+        payload = {
+            "contents": [{
+                "parts": [{"text": f"{AI_SYSTEM}\n\nسؤال الطالب: {question}"}]
+            }],
+            "generationConfig": {
+                "maxOutputTokens": 1000,
+                "temperature": 0.7,
+            }
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(url, json=payload)
+            data = resp.json()
+
+        if "candidates" not in data:
+            error = data.get("error", {}).get("message", "خطأ غير معروف")
+            print(f"⚠️ Gemini error: {error}")
+            return f"⚠️ خطأ في المساعد الذكي: {error}"
+
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+
+    except httpx.TimeoutException:
+        return "⚠️ انتهت مهلة الاتصال، حاول مجدداً."
+    except Exception as e:
+        print(f"⚠️ AI error: {e}")
+        return "⚠️ حدث خطأ في المساعد الذكي، حاول مجدداً."
+
 # تصنيفات الدروس
 CAT_DARS    = "📖 درس"
 CAT_MULAKH  = "📋 ملخص"
@@ -494,6 +556,7 @@ def kb_main():
          InlineKeyboardButton("👤 ملفي",               callback_data="PROF:show")],
         [InlineKeyboardButton("💬 اقتراح درس",          callback_data="SUG:start"),
          InlineKeyboardButton("❓ مساعدة",             callback_data="H:show")],
+        [InlineKeyboardButton("🤖 المساعد الذكي",       callback_data="AI:show")],
     ])
 
 def kb_years(lessons):
@@ -621,7 +684,8 @@ TXT_HELP = (
     "📚 *القاموس* — شرح المصطلحات الفقهية\n"
     "📝 *ملاحظاتي* — سجّل ملاحظاتك الشخصية\n"
     "👤 *ملفي* — اسمك وتخصصك وسنتك\n"
-    "💬 *اقتراح درس* — اطلب إضافة درس\n\n"
+    "💬 *اقتراح درس* — اطلب إضافة درس\n"
+    "🤖 *المساعد الذكي* — اسأل أي سؤال شرعي أو علمي\n\n"
     "✍️ *سؤال للمشرفين:* أرسل أي رسالة هنا\n\n"
     "⏰ *رسائل يومية تلقائية:*\n"
     "   07:00 أذكار الصباح\n"
@@ -1453,6 +1517,26 @@ async def handle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+    # ── المساعد الذكي ─────────────────────────────────────────
+    if data == "AI:show":
+        ud["awaiting"] = "ai_question"
+        return await q.message.edit_text(
+            "🤖 *المساعد الذكي*\n\n"
+            "مرحباً! أنا مساعدك العلمي المتخصص في الدراسات الإسلامية.\n\n"
+            "يمكنني مساعدتك في:\n"
+            "📖 الفقه وأصول الفقه\n"
+            "📜 الحديث النبوي وعلومه\n"
+            "🌟 التفسير والقرآن الكريم\n"
+            "🕌 العقيدة الإسلامية\n"
+            "📚 التاريخ الإسلامي\n"
+            "🔤 شرح المصطلحات الصعبة\n\n"
+            "✍️ *اكتب سؤالك الآن:*",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ إلغاء", callback_data="home")]
+            ]),
+            parse_mode="Markdown"
+        )
+
     # ── اقتراح درس ──────────────────────────────────────────
     if data == "SUG:start":
         ud["awaiting"] = "suggest"
@@ -1648,6 +1732,26 @@ async def handle_private(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await msg.reply_text("✅ تم إرسال اقتراحك للمشرفين، شكراً! 🌿")
             except Exception:
                 await msg.reply_text("⚠️ حدث خطأ، حاول مجدداً.")
+            return
+
+        if awaiting == "ai_question":
+            # إظهار مؤشر الكتابة
+            await context.bot.send_chat_action(
+                chat_id=update.effective_chat.id,
+                action="typing"
+            )
+            await msg.reply_text("⏳ جاري التفكير في إجابتك...")
+            answer = await ask_ai(text)
+            await msg.reply_text(
+                f"🤖 *المساعد الذكي*\n\n{answer}\n\n"
+                "─────────────────\n"
+                "⚠️ _هذه إجابة استرشادية. للفتوى الشرعية الشخصية يُرجع للعلماء._",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔁 سؤال جديد",   callback_data="AI:show")],
+                    [InlineKeyboardButton("🏠 الرئيسية",    callback_data="home")],
+                ]),
+                parse_mode="Markdown"
+            )
             return
 
     # ── المشرف: file_id تلقائي ──
