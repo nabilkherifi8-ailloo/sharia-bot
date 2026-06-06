@@ -94,7 +94,7 @@ async def ask_ai(question: str) -> str:
     try:
         url = (
             "https://generativelanguage.googleapis.com/v1beta/"
-            f"models/gemini-1.5-flash-latest:generateContent?key={api_key}"
+            f"models/gemini-2.5-flash-latest:generateContent?key={api_key}"
         )
         payload = {
             "contents": [{
