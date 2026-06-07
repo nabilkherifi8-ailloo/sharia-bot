@@ -557,6 +557,7 @@ def kb_main():
         [InlineKeyboardButton("💬 اقتراح درس",          callback_data="SUG:start"),
          InlineKeyboardButton("❓ مساعدة",             callback_data="H:show")],
         [InlineKeyboardButton("🤖 المساعد الذكي",       callback_data="AI:show")],
+        [InlineKeyboardButton("🔄 تحديث",              callback_data="REFRESH")],
     ])
 
 def kb_years(lessons):
@@ -835,6 +836,20 @@ async def cmd_adddars(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+    # خيار إشعار الطلاب
+    notify_text = f"NOTIFY:{year}|||{subj}|||{title}"
+    await msg.reply_text(
+        "📢 هل تريد إشعار الطلاب بهذا الدرس الجديد؟",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ نعم أرسل إشعاراً", callback_data="NOTIFYYES"),
+            InlineKeyboardButton("⏭️ تخطي",             callback_data="NOTIFYNO"),
+        ]])
+    )
+    # حفظ معلومات الإشعار مؤقتاً
+    context.bot_data[f"notify_{msg.from_user.id}"] = {
+        "year": year, "subj": subj, "title": title, "cat": cat
+    }
+
 async def cmd_listdars(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if not msg or not is_admin(update.effective_user.id, update.effective_chat.id): return
@@ -1074,6 +1089,51 @@ async def handle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = q.data
     uid  = update.effective_user.id
     ud   = context.user_data
+
+    # ── إشعار درس جديد ─────────────────────────────────────────
+    if data == "NOTIFYYES":
+        info = context.bot_data.get(f"notify_{uid}", {})
+        if info:
+            year  = info.get("year", "")
+            subj  = info.get("subj", "")
+            title = info.get("title", "")
+            cat   = info.get("cat", CAT_DARS)
+            text  = (
+                f"📚 *درس جديد أُضيف!*\n\n"
+                f"📖 المادة : *{subj}*\n"
+                f"📅 السنة  : *{year}*\n"
+                f"{cat_icon(cat)} *{title}*\n\n"
+                f"اضغط 🔄 تحديث في البوت لرؤيته"
+            )
+            await send_to_all(context.bot, text, parse_mode="Markdown")
+            context.bot_data.pop(f"notify_{uid}", None)
+            await q.answer("✅ تم إرسال الإشعار للجميع!")
+            await q.message.edit_text("📢 *تم إرسال الإشعار لجميع الطلاب* ✅",
+                                      parse_mode="Markdown")
+        return
+
+    if data == "NOTIFYNO":
+        context.bot_data.pop(f"notify_{uid}", None)
+        await q.answer("تم التخطي")
+        await q.message.edit_text("✅ تم إضافة الدرس بدون إشعار.")
+        return
+
+    # ── تحديث ──────────────────────────────────────────────────
+    if data == "REFRESH":
+        context.user_data.clear()
+        if update.effective_chat.type == "private":
+            add_user(update.effective_chat.id)
+        lessons  = load_lessons()
+        prof     = get_student_profile(uid)
+        greet    = f"أهلاً *{prof['name']}* 🌿\n\n" if prof.get("name") else ""
+        total    = total_lessons(lessons)
+        await q.answer("✅ تم التحديث!")
+        return await q.message.edit_text(
+            greet + TXT_WELCOME +
+            f"\n\n📚 _إجمالي الدروس المتاحة: {total}_",
+            reply_markup=kb_main(),
+            parse_mode="Markdown"
+        )
 
     # ── الرئيسية ──────────────────────────────────────────────
     if data == "home":
