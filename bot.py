@@ -532,8 +532,39 @@ async def scheduler_loop(app: Application):
         await asyncio.sleep(30)
 
 
+async def cmd_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/refresh — تحديث قائمة الدروس"""
+    if update.effective_chat.type == "private":
+        add_user(update.effective_chat.id)
+    context.user_data.clear()
+    lessons = load_lessons()
+    total   = total_lessons(lessons)
+    prof    = get_student_profile(update.effective_user.id)
+    greet   = f"أهلاً *{prof['name']}* 🌿\n\n" if prof.get("name") else ""
+    await update.message.reply_text(
+        greet + TXT_WELCOME +
+        f"\n\n📚 _إجمالي الدروس المتاحة: {total}_",
+        reply_markup=kb_main(),
+        parse_mode="Markdown"
+    )
+
+
 async def on_startup(app: Application):
     app.create_task(scheduler_loop(app))
+
+    # ✅ تسجيل أوامر البوت في قائمة Menu
+    commands = [
+        ("start",         "🏠 الصفحة الرئيسية"),
+        ("refresh",       "🔄 تحديث الدروس"),
+        ("ping",          "🏓 اختبار البوت"),
+        ("adminhelp",     "🛠️ أوامر المشرف"),
+    ]
+    try:
+        await app.bot.set_my_commands(commands)
+        print("✅ تم تسجيل أوامر Menu")
+    except Exception as e:
+        print(f"⚠️ set_my_commands: {e}")
+
     print("✅ البوت يعمل")
 
 
@@ -708,7 +739,8 @@ TXT_ADMIN = (
     "`/adddars سنة | تخصص | سداسي | مادة | عنوان | https://... | امتحان`\n\n"
     "_التصنيفات: درس / ملخص / امتحان_\n\n"
     "📋 `/listdars سنة | تخصص | سداسي | مادة`\n"
-    "🗑️ `/deldars سنة | تخصص | سداسي | مادة | رقم`\n\n"
+    "🗑️ `/deldars سنة | تخصص | سداسي | مادة | رقم`\n"
+    "📢 `/publishupdate` — إشعار الطلاب بتحديث الدروس\n\n"
     "━━━ 📝 الكويز ━━━\n"
     "➕ `/addquiz سؤال | خ1 | خ2 | خ3 | خ4 | رقم | نقاط`\n"
     "📋 `/listquiz`   🗑️ `/delquiz رقم`\n\n"
@@ -836,19 +868,20 @@ async def cmd_adddars(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-    # خيار إشعار الطلاب
-    notify_text = f"NOTIFY:{year}|||{subj}|||{title}"
-    await msg.reply_text(
-        "📢 هل تريد إشعار الطلاب بهذا الدرس الجديد؟",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("✅ نعم أرسل إشعاراً", callback_data="NOTIFYYES"),
-            InlineKeyboardButton("⏭️ تخطي",             callback_data="NOTIFYNO"),
-        ]])
+    # ✅ إشعار تلقائي لجميع الطلاب مع زر تحديث مدمج
+    notify_kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔄 تحديث الدروس الآن", callback_data="REFRESH")
+    ]])
+    await send_to_all(
+        context.bot,
+        f"📚 *درس جديد أُضيف!*\n\n"
+        f"📖 المادة : *{subj}*\n"
+        f"📅 السنة  : *{year}*\n"
+        f"{cat_icon(cat)} *{title}*\n\n"
+        f"اضغط الزر أدناه لتحديث قائمة الدروس ⬇️",
+        parse_mode="Markdown",
+        reply_markup=notify_kb
     )
-    # حفظ معلومات الإشعار مؤقتاً
-    context.bot_data[f"notify_{msg.from_user.id}"] = {
-        "year": year, "subj": subj, "title": title, "cat": cat
-    }
 
 async def cmd_listdars(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -1032,6 +1065,30 @@ async def cmd_listterms(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #  ٢٥. التقويم والبث
 # ================================================================
 
+async def cmd_publishupdate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/publishupdate — إشعار يدوي لجميع الطلاب بتحديث الدروس"""
+    if not is_admin(update.effective_user.id, update.effective_chat.id):
+        return
+    notify_kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔄 تحديث الدروس الآن", callback_data="REFRESH")
+    ]])
+    lessons = load_lessons()
+    total   = total_lessons(lessons)
+    await send_to_all(
+        context.bot,
+        f"📢 *تم تحديث الدروس!*\n\n"
+        f"📚 إجمالي الدروس المتاحة: *{total}*\n\n"
+        f"اضغط الزر أدناه لتحديث قائمة الدروس ⬇️",
+        parse_mode="Markdown",
+        reply_markup=notify_kb
+    )
+    await update.message.reply_text(
+        f"✅ تم إرسال إشعار التحديث لجميع الطلاب.\n"
+        f"📚 إجمالي الدروس: *{total}*",
+        parse_mode="Markdown"
+    )
+
+
 async def cmd_setcal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_CHAT_ID: return
     txt = (update.message.text or "").replace("/setcal", "", 1).strip()
@@ -1092,30 +1149,13 @@ async def handle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── إشعار درس جديد ─────────────────────────────────────────
     if data == "NOTIFYYES":
-        info = context.bot_data.get(f"notify_{uid}", {})
-        if info:
-            year  = info.get("year", "")
-            subj  = info.get("subj", "")
-            title = info.get("title", "")
-            cat   = info.get("cat", CAT_DARS)
-            text  = (
-                f"📚 *درس جديد أُضيف!*\n\n"
-                f"📖 المادة : *{subj}*\n"
-                f"📅 السنة  : *{year}*\n"
-                f"{cat_icon(cat)} *{title}*\n\n"
-                f"اضغط 🔄 تحديث في البوت لرؤيته"
-            )
-            await send_to_all(context.bot, text, parse_mode="Markdown")
-            context.bot_data.pop(f"notify_{uid}", None)
-            await q.answer("✅ تم إرسال الإشعار للجميع!")
-            await q.message.edit_text("📢 *تم إرسال الإشعار لجميع الطلاب* ✅",
-                                      parse_mode="Markdown")
+        await q.answer("✅ تم!")
+        await q.message.edit_text("✅ تم الإرسال.")
         return
 
     if data == "NOTIFYNO":
-        context.bot_data.pop(f"notify_{uid}", None)
         await q.answer("تم التخطي")
-        await q.message.edit_text("✅ تم إضافة الدرس بدون إشعار.")
+        await q.message.edit_text("✅ تم إضافة الدرس.")
         return
 
     # ── تحديث ──────────────────────────────────────────────────
@@ -1891,14 +1931,16 @@ def build_app() -> Application:
     app = Application.builder().token(token).post_init(on_startup).build()
 
     # أوامر عامة
-    app.add_handler(CommandHandler("start",     cmd_start))
-    app.add_handler(CommandHandler("ping",      cmd_ping))
+    app.add_handler(CommandHandler("start",   cmd_start))
+    app.add_handler(CommandHandler("refresh", cmd_refresh))
+    app.add_handler(CommandHandler("ping",    cmd_ping))
     app.add_handler(CommandHandler("adminhelp", cmd_adminhelp))
 
     # الدروس
-    app.add_handler(CommandHandler("adddars",  cmd_adddars))
-    app.add_handler(CommandHandler("listdars", cmd_listdars))
-    app.add_handler(CommandHandler("deldars",  cmd_deldars))
+    app.add_handler(CommandHandler("adddars",       cmd_adddars))
+    app.add_handler(CommandHandler("listdars",      cmd_listdars))
+    app.add_handler(CommandHandler("deldars",       cmd_deldars))
+    app.add_handler(CommandHandler("publishupdate", cmd_publishupdate))
 
     # الكويز
     app.add_handler(CommandHandler("addquiz",  cmd_addquiz))
