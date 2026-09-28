@@ -17,7 +17,7 @@ import httpx
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, ContextTypes, filters,
+    MessageHandler, ContextTypes, filters, PicklePersistence,
 )
 from telegram.error import Forbidden, BadRequest
 
@@ -41,6 +41,7 @@ FILE_NOTES    = "notes.json"
 FILE_LIKES    = "likes.json"
 FILE_POLL     = "poll.json"
 FILE_TERMS    = "terms.json"
+FILE_PERSIST  = "bot_persistence.pkl"   # يحفظ حالة كل مستخدم عبر إعادة التشغيل
 
 TZ = ZoneInfo("Africa/Algiers")
 
@@ -532,21 +533,24 @@ async def scheduler_loop(app: Application):
         await asyncio.sleep(30)
 
 
+def build_home(uid: int) -> tuple[str, InlineKeyboardMarkup]:
+    """نص وشكل الشاشة الرئيسية — دائماً محسوبة من البيانات الحالية،
+    تُستخدم في /start و/refresh وزر 🏠 وزر 🔄 لضمان أنها متطابقة دوماً."""
+    lessons = load_lessons()
+    total   = total_lessons(lessons)
+    prof    = get_student_profile(uid)
+    greet   = f"أهلاً *{prof['name']}* 🌿\n\n" if prof.get("name") else ""
+    text    = greet + TXT_WELCOME + f"\n\n📚 _إجمالي الدروس المتاحة: {total}_"
+    return text, kb_main()
+
+
 async def cmd_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/refresh — تحديث قائمة الدروس"""
     if update.effective_chat.type == "private":
         add_user(update.effective_chat.id)
     context.user_data.clear()
-    lessons = load_lessons()
-    total   = total_lessons(lessons)
-    prof    = get_student_profile(update.effective_user.id)
-    greet   = f"أهلاً *{prof['name']}* 🌿\n\n" if prof.get("name") else ""
-    await update.message.reply_text(
-        greet + TXT_WELCOME +
-        f"\n\n📚 _إجمالي الدروس المتاحة: {total}_",
-        reply_markup=kb_main(),
-        parse_mode="Markdown"
-    )
+    text, kb = build_home(update.effective_user.id)
+    await update.message.reply_text(text, reply_markup=kb, parse_mode="Markdown")
 
 
 async def on_startup(app: Application):
@@ -766,11 +770,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == "private":
         add_user(update.effective_chat.id)
     context.user_data.clear()
-    prof = get_student_profile(update.effective_user.id)
-    greet = f"أهلاً *{prof['name']}* 🌿\n\n" if prof.get("name") else ""
-    await update.message.reply_text(
-        greet + TXT_WELCOME, reply_markup=kb_main(), parse_mode="Markdown"
-    )
+    text, kb = build_home(update.effective_user.id)
+    await update.message.reply_text(text, reply_markup=kb, parse_mode="Markdown")
 
 async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     t = datetime.now(TZ).strftime("%H:%M:%S")
@@ -1147,6 +1148,10 @@ async def handle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid  = update.effective_user.id
     ud   = context.user_data
 
+    # ✅ تسجيل الطالب تلقائياً مع أي ضغطة زر — لا حاجة لـ /start إطلاقاً
+    if update.effective_chat.type == "private":
+        add_user(update.effective_chat.id)
+
     # ── إشعار درس جديد ─────────────────────────────────────────
     if data == "NOTIFYYES":
         await q.answer("✅ تم!")
@@ -1158,33 +1163,15 @@ async def handle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.message.edit_text("✅ تم إضافة الدرس.")
         return
 
-    # ── تحديث ──────────────────────────────────────────────────
-    if data == "REFRESH":
+    # ── تحديث / الرئيسية ─────────────────────────────────────
+    # نفس الدالة لكليهما، فالطالب يحصل دائماً على نفس البيانات
+    # التي يراها المشرف في نفس اللحظة (بلا أي تخزين مؤقت).
+    if data in ("REFRESH", "home"):
         context.user_data.clear()
-        if update.effective_chat.type == "private":
-            add_user(update.effective_chat.id)
-        lessons  = load_lessons()
-        prof     = get_student_profile(uid)
-        greet    = f"أهلاً *{prof['name']}* 🌿\n\n" if prof.get("name") else ""
-        total    = total_lessons(lessons)
-        await q.answer("✅ تم التحديث!")
-        return await q.message.edit_text(
-            greet + TXT_WELCOME +
-            f"\n\n📚 _إجمالي الدروس المتاحة: {total}_",
-            reply_markup=kb_main(),
-            parse_mode="Markdown"
-        )
-
-    # ── الرئيسية ──────────────────────────────────────────────
-    if data == "home":
-        context.user_data.clear()
-        if update.effective_chat.type == "private":
-            add_user(update.effective_chat.id)
-        prof   = get_student_profile(uid)
-        greet  = f"أهلاً *{prof['name']}* 🌿\n\n" if prof.get("name") else ""
-        return await q.message.edit_text(
-            greet + TXT_WELCOME, reply_markup=kb_main(), parse_mode="Markdown"
-        )
+        text, kb = build_home(uid)
+        if data == "REFRESH":
+            await q.answer("✅ تم التحديث!")
+        return await q.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
 
     # ── مساعدة ──────────────────────────────────────────────
     if data == "H:show":
@@ -1928,7 +1915,17 @@ def build_app() -> Application:
     if not token:
         raise RuntimeError("❌ BOT_TOKEN غير موجود.")
 
-    app = Application.builder().token(token).post_init(on_startup).build()
+    # ✅ حفظ حالة كل مستخدم (تنقّله الحالي، عداد الأذكار...) على القرص
+    # حتى لا تُفقد إذا أعاد Render تشغيل السيرفر (سكون/نشر جديد)
+    persistence = PicklePersistence(filepath=FILE_PERSIST)
+
+    app = (
+        Application.builder()
+        .token(token)
+        .persistence(persistence)
+        .post_init(on_startup)
+        .build()
+    )
 
     # أوامر عامة
     app.add_handler(CommandHandler("start",   cmd_start))
