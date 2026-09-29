@@ -29,6 +29,8 @@ from telegram.error import Forbidden, BadRequest
 ADMIN_CHAT_ID = -1003784231419
 ADMIN_IDS     = {1490829295}
 
+# هذه الأسماء أصبحت مفاتيح Redis على Upstash (لا ملفات محلية) — راجع
+# قسم "أدوات التخزين" أدناه. الاسم بقي كما هو فقط لعدم تغيير بقية الكود.
 FILE_MAP      = "msg_map.json"
 FILE_USERS    = "users.json"
 FILE_POINTS   = "points.json"
@@ -41,7 +43,7 @@ FILE_NOTES    = "notes.json"
 FILE_LIKES    = "likes.json"
 FILE_POLL     = "poll.json"
 FILE_TERMS    = "terms.json"
-FILE_PERSIST  = "bot_persistence.pkl"   # يحفظ حالة كل مستخدم عبر إعادة التشغيل
+FILE_PERSIST  = "bot_persistence.pkl"   # لا يزال محلياً (راجع الملاحظة في build_app)
 
 TZ = ZoneInfo("Africa/Algiers")
 
@@ -197,24 +199,69 @@ ADYIA_YAWM = [
 
 
 # ================================================================
-#  ٣. أدوات JSON
+#  ٣. أدوات التخزين — Upstash Redis (مجاني ودائم)
+#  ─────────────────────────────────────────────────────────────
+#  Render المجاني يمحو القرص المحلي عند كل ركود/إعادة تشغيل،
+#  لذلك نُخزّن كل البيانات عبر Upstash بدل الملفات المحلية.
+#  الدوال تحمل نفس الاسم والشكل بالضبط (_load/_save) حتى لا نُغيّر
+#  أي سطر آخر في بقية الملف — فقط "أين" تُحفظ البيانات تغيّر.
 # ================================================================
+
+def _upstash_ready():
+    return bool(_clean(os.environ.get("UPSTASH_REDIS_REST_URL", ""))
+                and _clean(os.environ.get("UPSTASH_REDIS_REST_TOKEN", "")))
+
+def _upstash_headers():
+    token = _clean(os.environ.get("UPSTASH_REDIS_REST_TOKEN", ""))
+    return {"Authorization": f"Bearer {token}"}
+
+def _upstash_base():
+    return _clean(os.environ.get("UPSTASH_REDIS_REST_URL", "")).rstrip("/")
+
+
+def _load(path, default):
+    """path هو اسم الملف السابق (users.json...) ويُستخدم الآن كمفتاح Redis."""
+    if not _upstash_ready():
+        # احتياط فقط: لو المفاتيح غير مضبوطة بعد، نقرأ من القرص المحلي
+        # (سيُمحى عند أي ركود — لهذا يجب ضبط Upstash).
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return default
+    try:
+        with httpx.Client(timeout=10) as c:
+            r = c.get(f"{_upstash_base()}/get/{path}", headers=_upstash_headers())
+            result = r.json().get("result")
+        if result is None:
+            return default
+        return json.loads(result)
+    except Exception as e:
+        print(f"⚠️ Upstash GET({path}) error: {e}")
+        return default
+
+
+def _save(path, data):
+    if not _upstash_ready():
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        return
+    try:
+        value = json.dumps(data, ensure_ascii=False)
+        with httpx.Client(timeout=10) as c:
+            c.post(f"{_upstash_base()}/set/{path}", headers=_upstash_headers(),
+                   content=value.encode("utf-8"))
+    except Exception as e:
+        print(f"⚠️ Upstash SET({path}) error: {e}")
+
 
 def _clean(s):
     return "".join(str(s).strip().split()) if s else ""
-
-def _load(path, default):
-    try:
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return default
-
-def _save(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
 
 def is_url(s):
     return isinstance(s, str) and (s.startswith("http://") or s.startswith("https://"))
@@ -239,15 +286,15 @@ def cat_icon(cat):
 # ================================================================
 
 def load_lessons():
-    if os.path.exists(FILE_LESSONS):
-        d = _load(FILE_LESSONS, None)
-        if isinstance(d, dict) and d:
-            return d
+    d = _load(FILE_LESSONS, None)
+    if isinstance(d, dict) and d:
+        return d
+    # لا يوجد شيء محفوظ بعد (أول تشغيل) — نُهيّئ من lessons.py
     try:
         from lessons import LESSONS as _D
         d = copy.deepcopy(_D)
         _save(FILE_LESSONS, d)
-        print("✅ lessons_data.json تم إنشاؤه")
+        print("✅ lessons تم تهيئتها من lessons.py وحُفظت في Upstash")
         return d
     except ImportError:
         print("❌ lessons.py غير موجود")
@@ -775,7 +822,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     t = datetime.now(TZ).strftime("%H:%M:%S")
-    await update.message.reply_text(f"🏓 البوت يعمل ✅\n🕐 {t}")
+    db_status = "✅ متصل" if _upstash_ready() else "❌ غير مُفعَّل (البيانات ستُفقد عند الركود!)"
+    await update.message.reply_text(
+        f"🏓 البوت يعمل ✅\n"
+        f"🕐 {t}\n"
+        f"💾 قاعدة البيانات: {db_status}"
+    )
 
 async def cmd_adminhelp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS: return
@@ -1915,8 +1967,10 @@ def build_app() -> Application:
     if not token:
         raise RuntimeError("❌ BOT_TOKEN غير موجود.")
 
-    # ✅ حفظ حالة كل مستخدم (تنقّله الحالي، عداد الأذكار...) على القرص
-    # حتى لا تُفقد إذا أعاد Render تشغيل السيرفر (سكون/نشر جديد)
+    # ملاحظة: هذا لا يزال يكتب على القرص المحلي، فيُمحى مثل بقية الملفات
+    # عند ركود Render. البيانات المهمة (نقاط، دروس، ملفات الطلاب...)
+    # محفوظة بأمان في Upstash؛ هذا فقط لتفادي خطأ بسيط إن كان الطالب
+    # في منتصف تصفّح الدروس لحظة إعادة التشغيل — تأثيره شكلي لا جوهري.
     persistence = PicklePersistence(filepath=FILE_PERSIST)
 
     app = (
