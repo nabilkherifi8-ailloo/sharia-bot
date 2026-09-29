@@ -234,7 +234,11 @@ def _load(path, default):
     try:
         with httpx.Client(timeout=10) as c:
             r = c.get(f"{_upstash_base()}/get/{path}", headers=_upstash_headers())
-            result = r.json().get("result")
+        j = r.json()
+        if r.status_code != 200 or "error" in j:
+            print(f"⚠️ Upstash GET({path}) رفض الطلب [{r.status_code}]: {j}")
+            return default
+        result = j.get("result")
         if result is None:
             return default
         return json.loads(result)
@@ -254,8 +258,12 @@ def _save(path, data):
     try:
         value = json.dumps(data, ensure_ascii=False)
         with httpx.Client(timeout=10) as c:
-            c.post(f"{_upstash_base()}/set/{path}", headers=_upstash_headers(),
-                   content=value.encode("utf-8"))
+            r = c.post(f"{_upstash_base()}/set/{path}", headers=_upstash_headers(),
+                       content=value.encode("utf-8"))
+        j = r.json()
+        # ✅ نتحقق فعلياً من نجاح الكتابة بدل افتراض ذلك — هذا كان الخلل
+        if r.status_code != 200 or j.get("result") != "OK":
+            print(f"❌ Upstash SET({path}) فشلت [{r.status_code}]: {j}")
     except Exception as e:
         print(f"⚠️ Upstash SET({path}) error: {e}")
 
@@ -802,7 +810,7 @@ TXT_ADMIN = (
     "➕ `/addterm مصطلح | تعريف`\n"
     "🗑️ `/delterm مصطلح`   📋 `/listterms`\n\n"
     "━━━ 📢 عام ━━━\n"
-    "📊 `/stats`   🏓 `/ping`\n"
+    "📊 `/stats`   🏓 `/ping`   🔍 `/dbcheck`\n"
     "📢 `/broadcast النص` أو Reply + `/broadcast`\n"
     "🗓️ `/setcal القسم | النص`\n"
     "📎 أرسل PDF في الخاص للحصول على file\\_id"
@@ -822,11 +830,78 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     t = datetime.now(TZ).strftime("%H:%M:%S")
-    db_status = "✅ متصل" if _upstash_ready() else "❌ غير مُفعَّل (البيانات ستُفقد عند الركود!)"
+    db_status = "✅ المتغيرات موجودة" if _upstash_ready() else "❌ غير مُفعَّل (البيانات ستُفقد عند الركود!)"
     await update.message.reply_text(
         f"🏓 البوت يعمل ✅\n"
         f"🕐 {t}\n"
-        f"💾 قاعدة البيانات: {db_status}"
+        f"💾 قاعدة البيانات: {db_status}\n\n"
+        f"للتأكد أن الحفظ يعمل فعلاً: /dbcheck"
+    )
+
+
+async def cmd_dbcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/dbcheck — اختبار حقيقي: كتابة وقراءة فعلية من Upstash، لا افتراض"""
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    msg = update.message
+
+    if not _upstash_ready():
+        await msg.reply_text(
+            "❌ *متغيرات Upstash غير موجودة إطلاقاً*\n\n"
+            "تحقق في Render → Environment من وجود:\n"
+            "`UPSTASH_REDIS_REST_URL`\n`UPSTASH_REDIS_REST_TOKEN`",
+            parse_mode="Markdown"
+        )
+        return
+
+    test_key = "__healthcheck__"
+    test_val = datetime.now(TZ).isoformat()
+
+    try:
+        with httpx.Client(timeout=10) as c:
+            r_set = c.post(f"{_upstash_base()}/set/{test_key}",
+                           headers=_upstash_headers(),
+                           content=test_val.encode("utf-8"))
+            set_json = r_set.json()
+    except Exception as e:
+        await msg.reply_text(f"❌ *تعذّر الوصول إلى Upstash إطلاقاً:*\n`{e}`\n\n"
+                             "تحقق من صحة UPSTASH_REDIS_REST_URL.",
+                             parse_mode="Markdown")
+        return
+
+    if r_set.status_code != 200 or set_json.get("result") != "OK":
+        await msg.reply_text(
+            f"❌ *فشلت الكتابة (SET)*\n"
+            f"الحالة: `{r_set.status_code}`\n"
+            f"الرد: `{set_json}`\n\n"
+            "🔎 *السبب الأرجح:* التوكن المنسوخ هو *Read Only Token* بدل "
+            "*Token* العادي (القابل للكتابة) — راجع لوحة Upstash.",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        with httpx.Client(timeout=10) as c:
+            r_get = c.get(f"{_upstash_base()}/get/{test_key}", headers=_upstash_headers())
+            get_json = r_get.json()
+    except Exception as e:
+        await msg.reply_text(f"❌ الكتابة نجحت لكن القراءة فشلت:\n`{e}`", parse_mode="Markdown")
+        return
+
+    if get_json.get("result") != test_val:
+        await msg.reply_text(
+            f"❌ *القراءة أعادت قيمة مختلفة!*\n"
+            f"المتوقع: `{test_val}`\nالفعلي: `{get_json}`",
+            parse_mode="Markdown"
+        )
+        return
+
+    users_count = len(load_users())
+    await msg.reply_text(
+        "✅ *الاتصال بـ Upstash سليم 100%*\n"
+        "الكتابة والقراءة تعملان فعلاً.\n\n"
+        f"👥 عدد الطلاب المسجّلين حالياً: *{users_count}*",
+        parse_mode="Markdown"
     )
 
 async def cmd_adminhelp(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1985,6 +2060,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("start",   cmd_start))
     app.add_handler(CommandHandler("refresh", cmd_refresh))
     app.add_handler(CommandHandler("ping",    cmd_ping))
+    app.add_handler(CommandHandler("dbcheck", cmd_dbcheck))
     app.add_handler(CommandHandler("adminhelp", cmd_adminhelp))
 
     # الدروس
