@@ -269,7 +269,15 @@ def _save(path, data):
 
 
 def _clean(s):
-    return "".join(str(s).strip().split()) if s else ""
+    """تنظيف قيم متغيرات البيئة: إزالة المسافات، وإزالة علامات اقتباس
+    محيطة بالقيمة بالكامل (خطأ شائع عند نسخ القيم من لوحات مثل Upstash
+    التي تعرضها بصيغة .env مثل: "https://..." فتُنسخ العلامات بالخطأ)."""
+    if not s:
+        return ""
+    v = "".join(str(s).strip().split())
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+        v = v[1:-1]
+    return v
 
 def is_url(s):
     return isinstance(s, str) and (s.startswith("http://") or s.startswith("https://"))
@@ -507,6 +515,21 @@ async def send_to_all(bot, text, parse_mode=None, reply_markup=None):
     if dead: save_users(users - dead)
 
 
+async def broadcast_lesson_update(bot):
+    """إشعار موحّد لجميع الطلاب بوجود دروس جديدة، مع زر تحديث فوري."""
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔄 تحديث الدروس الآن", callback_data="REFRESH")
+    ]])
+    total = total_lessons(load_lessons())
+    await send_to_all(
+        bot,
+        f"📢 *تحديث في الدروس!*\n\n📚 إجمالي الدروس المتاحة الآن: *{total}*\n\n"
+        "اضغط الزر أدناه لتحديث قائمتك ⬇️",
+        parse_mode="Markdown",
+        reply_markup=kb
+    )
+
+
 # ================================================================
 #  ١٦. مواقيت الصلاة
 # ================================================================
@@ -714,6 +737,118 @@ def kb_back(target):
         [InlineKeyboardButton("🏠 الرئيسية", callback_data="home")],
     ])
 
+
+# ════════════════════════════════════════════════════════════════
+#  لوحة إدارة المشرف — إضافة/حذف مسارات بالأزرار (بدون كتابة مسار يدوياً)
+# ════════════════════════════════════════════════════════════════
+
+def kb_admin_panel():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ إضافة دروس",      callback_data="AA:start")],
+        [InlineKeyboardButton("🗑️ حذف مسار",        callback_data="AD:start")],
+        [InlineKeyboardButton("✖️ إغلاق",            callback_data="AM:close")],
+    ])
+
+
+def _count_lessons_any(node) -> int:
+    """عدّ الدروس داخل أي عقدة من شجرة الدروس بغض النظر عن عمقها."""
+    if isinstance(node, list):
+        return len(node)
+    if isinstance(node, dict):
+        return sum(_count_lessons_any(v) for v in node.values())
+    return 0
+
+
+def aa_render_pick(level: str, lessons: dict, ud: dict):
+    """يبني شاشة اختيار المستوى التالي في وضع (إضافة) — لا كتابة، أزرار فقط.
+    نستخدم .get() في كل تنقّل حتى يعمل مع مسار جديد لم يُحفظ بعد."""
+    if level == "year":
+        items = list(lessons.keys())
+        title = "📘 اختر السنة، أو أنشئ سنة جديدة:"
+        cb_pick, cb_new = "AA:y:", "AA:newyear"
+    elif level == "spec":
+        items = list(lessons.get(ud.get("aa_year", ""), {}).keys())
+        title = f"📙 *{ud.get('aa_year','')}*\nاختر التخصص، أو أنشئ جديداً:"
+        cb_pick, cb_new = "AA:s:", "AA:newspec"
+    elif level == "sem":
+        items = list(lessons.get(ud.get("aa_year", ""), {})
+                             .get(ud.get("aa_spec", ""), {}).keys())
+        title = f"📗 *{ud.get('aa_year','')} ← {ud.get('aa_spec','')}*\nاختر السداسي، أو أنشئ جديداً:"
+        cb_pick, cb_new = "AA:sm:", "AA:newsem"
+    else:  # subj
+        items = list(lessons.get(ud.get("aa_year", ""), {})
+                             .get(ud.get("aa_spec", ""), {})
+                             .get(ud.get("aa_sem", ""), {}).keys())
+        title = f"📚 *{ud.get('aa_sem','')}*\nاختر المادة، أو أنشئ جديدة:"
+        cb_pick, cb_new = "AA:sb:", "AA:newsubj"
+
+    rows = [[InlineKeyboardButton(x, callback_data=f"{cb_pick}{i}")] for i, x in enumerate(items)]
+    rows.append([InlineKeyboardButton("➕ جديد", callback_data=cb_new)])
+    rows.append([InlineKeyboardButton("✖️ إلغاء", callback_data="AM:close")])
+    return title, InlineKeyboardMarkup(rows)
+
+
+def aa_render_collect(ud: dict):
+    """شاشة جمع الملفات — تبقى ثابتة بعد اختيار/إنشاء المسار، فلا حاجة
+    لإعادة اختيار المسار مع كل ملف."""
+    cat = ud.get("aa_cat", CAT_DARS)
+    added = ud.get("aa_added_count", 0)
+    text = (
+        "📥 *وضع الإضافة نشط*\n\n"
+        f"📚 {ud.get('aa_year','')} ← {ud.get('aa_spec','')}\n"
+        f"📅 {ud.get('aa_sem','')} ← {ud.get('aa_subj','')}\n"
+        f"🏷️ التصنيف الحالي: {cat}\n"
+        f"✅ أُضيف حتى الآن: {added}\n\n"
+        "أرسل أي ملف PDF الآن وسأطلب عنوانه فقط — "
+        "لن تحتاج لإعادة اختيار المسار مع كل ملف."
+    )
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"🏷️ تغيير التصنيف", callback_data="AA:cat")],
+        [InlineKeyboardButton("🔗 إضافة رابط بدل ملف", callback_data="AA:url")],
+        [InlineKeyboardButton("🔀 تغيير المسار",        callback_data="AA:start")],
+        [InlineKeyboardButton("✅ إنهاء",               callback_data="AA:done")],
+    ])
+    return text, kb
+
+
+def ad_render(level: str, lessons: dict, ud: dict):
+    """شاشة حذف مسار — تعرض الأبناء للتدرّج، وزر حذف هذا المستوى بالكامل
+    مع عدد الدروس المتأثرة، في كل عمق."""
+    parts, node = [], lessons
+    if level in ("spec", "sem", "subj", "leaf"):
+        parts.append(ud["ad_year"]); node = node.get(ud["ad_year"], {})
+    if level in ("sem", "subj", "leaf"):
+        parts.append(ud["ad_spec"]); node = node.get(ud["ad_spec"], {})
+    if level in ("subj", "leaf"):
+        parts.append(ud["ad_sem"]);  node = node.get(ud["ad_sem"], {})
+    if level == "leaf":
+        parts.append(ud["ad_subj"]); node = node.get(ud["ad_subj"], [])
+
+    if level == "year":
+        children, cb_pick = list(lessons.keys()), "AD:y:"
+    elif level == "spec":
+        children, cb_pick = list(node.keys()), "AD:s:"
+    elif level == "sem":
+        children, cb_pick = list(node.keys()), "AD:sm:"
+    elif level == "subj":
+        children, cb_pick = list(node.keys()), "AD:sb:"
+    else:
+        children, cb_pick = [], None
+
+    rows = [[InlineKeyboardButton(f"▶️ {name}", callback_data=f"{cb_pick}{i}")]
+            for i, name in enumerate(children)]
+
+    cnt = _count_lessons_any(node)
+    path_text = " ← ".join(parts) if parts else "(من البداية)"
+    rows.append([InlineKeyboardButton(
+        f"🗑️ احذف هذا المسار بالكامل ({cnt} درس)", callback_data=f"AD:confirm:{level}"
+    )])
+    rows.append([InlineKeyboardButton("⬅️ من البداية", callback_data="AD:start")])
+    rows.append([InlineKeyboardButton("✖️ إلغاء",       callback_data="AM:close")])
+
+    text = f"🗑️ *{path_text}*\nاختر للتعمّق أكثر، أو احذف هذا المستوى:"
+    return text, InlineKeyboardMarkup(rows)
+
 def kb_like(key, count, liked):
     icon = "❤️" if liked else "🤍"
     return InlineKeyboardMarkup([[
@@ -789,7 +924,10 @@ TXT_HELP = (
 
 TXT_ADMIN = (
     "🛠️ *أوامر المشرف*\n\n"
-    "━━━ 📚 الدروس ━━━\n"
+    "⭐ *الطريقة الموصى بها لإدارة الدروس:*\n"
+    "`/admin` — لوحة كاملة بالأزرار فقط (إضافة وحذف "
+    "مسارات كاملة)، بلا أي كتابة يدوية للمسار.\n\n"
+    "━━━ 📚 الدروس (الطريقة القديمة بالنص) ━━━\n"
     "➕ إضافة PDF *(Reply على الملف)*:\n"
     "`/adddars سنة | تخصص | سداسي | مادة | عنوان`\n"
     "`/adddars سنة | تخصص | سداسي | مادة | عنوان | ملخص`  ← مع تصنيف\n\n"
@@ -907,6 +1045,25 @@ async def cmd_dbcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_adminhelp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS: return
     await update.message.reply_text(TXT_ADMIN, parse_mode="Markdown")
+
+
+async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/admin — لوحة إضافة وحذف الدروس بالأزرار فقط، بلا كتابة مسار يدوياً.
+    تعمل في الخاص مع المشرف فقط (لا تظهر للطلاب إطلاقاً)."""
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    if update.effective_chat.type != "private":
+        await update.message.reply_text("🛠️ راسلني في الخاص بـ /admin لفتح لوحة الإدارة.")
+        return
+    for k in list(context.user_data.keys()):
+        if k.startswith("aa_") or k.startswith("ad_"):
+            context.user_data.pop(k, None)
+    context.user_data.pop("awaiting", None)
+    await update.message.reply_text(
+        "🛠️ *لوحة إدارة الدروس*\n\nكل شيء هنا بالأزرار — لا حاجة لكتابة أي مسار يدوياً.",
+        reply_markup=kb_admin_panel(),
+        parse_mode="Markdown"
+    )
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id, update.effective_chat.id): return
@@ -1278,6 +1435,248 @@ async def handle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ✅ تسجيل الطالب تلقائياً مع أي ضغطة زر — لا حاجة لـ /start إطلاقاً
     if update.effective_chat.type == "private":
         add_user(update.effective_chat.id)
+
+    # ════════════════════════════════════════════════════════════
+    #  لوحة إدارة المشرف (AM/AA/AD) — إضافة وحذف مسارات بالأزرار فقط
+    # ════════════════════════════════════════════════════════════
+    if data.startswith("AM:") or data.startswith("AA:") or data.startswith("AD:"):
+        if uid not in ADMIN_IDS:
+            await q.answer("❌ للمشرفين فقط.", show_alert=True)
+            return
+
+        if data == "AM:close":
+            for k in list(ud.keys()):
+                if k.startswith("aa_") or k.startswith("ad_"):
+                    ud.pop(k, None)
+            ud.pop("awaiting", None)
+            await q.message.edit_text("✅ أُغلقت لوحة الإدارة.")
+            return
+
+        lessons = load_lessons()
+
+        # ── إضافة دروس ──────────────────────────────────────────
+        if data == "AA:start":
+            for k in list(ud.keys()):
+                if k.startswith("aa_"):
+                    ud.pop(k, None)
+            t, kb = aa_render_pick("year", lessons, ud)
+            await q.message.edit_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+        if data.startswith("AA:y:"):
+            idx, keys = int(data[5:]), list(lessons.keys())
+            if idx >= len(keys): return
+            ud["aa_year"] = keys[idx]
+            t, kb = aa_render_pick("spec", lessons, ud)
+            await q.message.edit_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+        if data == "AA:newyear":
+            ud["awaiting"] = "aa_new_year"
+            await q.message.edit_text(
+                "✏️ اكتب اسم *السنة* الجديدة:",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✖️ إلغاء", callback_data="AM:close")]]),
+                parse_mode="Markdown"
+            )
+            return
+
+        if data.startswith("AA:s:"):
+            idx = int(data[5:])
+            keys = list(lessons.get(ud.get("aa_year", ""), {}).keys())
+            if idx >= len(keys): return
+            ud["aa_spec"] = keys[idx]
+            t, kb = aa_render_pick("sem", lessons, ud)
+            await q.message.edit_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+        if data == "AA:newspec":
+            ud["awaiting"] = "aa_new_spec"
+            await q.message.edit_text(
+                f"✏️ اكتب اسم *التخصص* الجديد ضمن {ud.get('aa_year','')}:",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✖️ إلغاء", callback_data="AM:close")]]),
+                parse_mode="Markdown"
+            )
+            return
+
+        if data.startswith("AA:sm:"):
+            idx = int(data[6:])
+            keys = list(lessons.get(ud.get("aa_year", ""), {})
+                               .get(ud.get("aa_spec", ""), {}).keys())
+            if idx >= len(keys): return
+            ud["aa_sem"] = keys[idx]
+            t, kb = aa_render_pick("subj", lessons, ud)
+            await q.message.edit_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+        if data == "AA:newsem":
+            ud["awaiting"] = "aa_new_sem"
+            await q.message.edit_text(
+                f"✏️ اكتب اسم *السداسي* الجديد ضمن {ud.get('aa_spec','')}:",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✖️ إلغاء", callback_data="AM:close")]]),
+                parse_mode="Markdown"
+            )
+            return
+
+        if data.startswith("AA:sb:"):
+            idx = int(data[6:])
+            keys = list(lessons.get(ud.get("aa_year", ""), {})
+                               .get(ud.get("aa_spec", ""), {})
+                               .get(ud.get("aa_sem", ""), {}).keys())
+            if idx >= len(keys): return
+            ud["aa_subj"] = keys[idx]
+            ud["aa_cat"]  = CAT_DARS
+            t, kb = aa_render_collect(ud)
+            await q.message.edit_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+        if data == "AA:newsubj":
+            ud["awaiting"] = "aa_new_subj"
+            await q.message.edit_text(
+                f"✏️ اكتب اسم *المادة* الجديدة ضمن {ud.get('aa_sem','')}:",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✖️ إلغاء", callback_data="AM:close")]]),
+                parse_mode="Markdown"
+            )
+            return
+
+        if data == "AA:cat":
+            cur = ud.get("aa_cat", CAT_DARS)
+            ud["aa_cat"] = CATS[(CATS.index(cur) + 1) % len(CATS)] if cur in CATS else CAT_DARS
+            t, kb = aa_render_collect(ud)
+            await q.message.edit_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+        if data == "AA:url":
+            ud["awaiting"] = "aa_url"
+            await q.message.edit_text(
+                "🔗 اكتب العنوان والرابط بهذه الصيغة في رسالة واحدة:\n"
+                "`العنوان | https://الرابط`",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✖️ إلغاء", callback_data="AA:cancelurl")]]),
+                parse_mode="Markdown"
+            )
+            return
+
+        if data == "AA:cancelurl":
+            ud.pop("awaiting", None)
+            t, kb = aa_render_collect(ud)
+            await q.message.edit_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+        if data == "AA:done":
+            added = ud.get("aa_added_count", 0)
+            for k in list(ud.keys()):
+                if k.startswith("aa_"):
+                    ud.pop(k, None)
+            ud.pop("awaiting", None)
+            if added:
+                await broadcast_lesson_update(context.bot)
+                await q.message.edit_text(f"✅ انتهى — أُضيف *{added}* درساً، وأُشعر الطلاب تلقائياً.",
+                                          parse_mode="Markdown")
+            else:
+                await q.message.edit_text("✅ أُغلق وضع الإضافة (لم يُضَف شيء).")
+            return
+
+        # ── حذف مسار كامل ────────────────────────────────────────
+        if data == "AD:start":
+            for k in list(ud.keys()):
+                if k.startswith("ad_"):
+                    ud.pop(k, None)
+            kb = InlineKeyboardMarkup(
+                [[InlineKeyboardButton(y, callback_data=f"AD:y:{i}")] for i, y in enumerate(lessons)]
+                + [[InlineKeyboardButton("✖️ إلغاء", callback_data="AM:close")]]
+            )
+            await q.message.edit_text("🗑️ اختر السنة:", reply_markup=kb)
+            return
+
+        if data.startswith("AD:y:"):
+            idx, keys = int(data[5:]), list(lessons.keys())
+            if idx >= len(keys): return
+            ud["ad_year"] = keys[idx]
+            t, kb = ad_render("spec", lessons, ud)
+            await q.message.edit_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+        if data.startswith("AD:s:"):
+            idx = int(data[5:])
+            keys = list(lessons.get(ud.get("ad_year", ""), {}).keys())
+            if idx >= len(keys): return
+            ud["ad_spec"] = keys[idx]
+            t, kb = ad_render("sem", lessons, ud)
+            await q.message.edit_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+        if data.startswith("AD:sm:"):
+            idx = int(data[6:])
+            keys = list(lessons.get(ud.get("ad_year", ""), {})
+                               .get(ud.get("ad_spec", ""), {}).keys())
+            if idx >= len(keys): return
+            ud["ad_sem"] = keys[idx]
+            t, kb = ad_render("subj", lessons, ud)
+            await q.message.edit_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+        if data.startswith("AD:sb:"):
+            idx = int(data[6:])
+            keys = list(lessons.get(ud.get("ad_year", ""), {})
+                               .get(ud.get("ad_spec", ""), {})
+                               .get(ud.get("ad_sem", ""), {}).keys())
+            if idx >= len(keys): return
+            ud["ad_subj"] = keys[idx]
+            t, kb = ad_render("leaf", lessons, ud)
+            await q.message.edit_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+        if data.startswith("AD:confirm:"):
+            level = data[11:]
+            if level == "year":
+                path = [ud["ad_year"]]
+            elif level == "spec":
+                path = [ud["ad_year"], ud["ad_spec"]]
+            elif level == "sem":
+                path = [ud["ad_year"], ud["ad_spec"], ud["ad_sem"]]
+            else:
+                path = [ud["ad_year"], ud["ad_spec"], ud["ad_sem"], ud["ad_subj"]]
+
+            node = lessons
+            for p in path[:-1]:
+                node = node.get(p, {})
+            target = node.get(path[-1], {})
+            cnt = _count_lessons_any(target)
+
+            ud["ad_pending_path"] = path
+            await q.message.edit_text(
+                f"⚠️ *تأكيد الحذف*\n\n"
+                f"سيُحذف نهائياً: *{' ← '.join(path)}*\n"
+                f"عدد الدروس المتأثرة: *{cnt}*\n\n"
+                "هذا الإجراء *لا يمكن التراجع عنه*. متأكد؟",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ نعم، احذف نهائياً", callback_data="AD:dodelete")],
+                    [InlineKeyboardButton("❌ تراجع",            callback_data="AM:close")],
+                ]),
+                parse_mode="Markdown"
+            )
+            return
+
+        if data == "AD:dodelete":
+            path = ud.get("ad_pending_path")
+            if not path:
+                await q.message.edit_text("⚠️ انتهت صلاحية هذا الطلب، ابدأ من جديد.")
+                return
+            node = lessons
+            for p in path[:-1]:
+                node = node.get(p, {})
+            removed_name = path[-1]
+            if removed_name in node:
+                del node[removed_name]
+                save_lessons(lessons)
+                for k in list(ud.keys()):
+                    if k.startswith("ad_"):
+                        ud.pop(k, None)
+                await q.message.edit_text(f"✅ تم حذف: *{removed_name}* بالكامل.", parse_mode="Markdown")
+            else:
+                await q.message.edit_text("⚠️ لم يعد هذا المسار موجوداً (رُبما حُذف مسبقاً).")
+            return
+
+        return  # أي callback آخر يبدأ بـ AM/AA/AD غير معروف — تجاهل بأمان
 
     # ── إشعار درس جديد ─────────────────────────────────────────
     if data == "NOTIFYYES":
@@ -1968,15 +2367,86 @@ async def handle_private(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-    # ── المشرف: file_id تلقائي ──
+        # ── لوحة إدارة المشرف: إنشاء مستوى جديد بالاسم ──
+        if awaiting in ("aa_new_year", "aa_new_spec", "aa_new_sem", "aa_new_subj"):
+            lessons = load_lessons()
+            if awaiting == "aa_new_year":
+                ud["aa_year"] = text
+                t, kb = aa_render_pick("spec", lessons, ud)
+            elif awaiting == "aa_new_spec":
+                ud["aa_spec"] = text
+                t, kb = aa_render_pick("sem", lessons, ud)
+            elif awaiting == "aa_new_sem":
+                ud["aa_sem"] = text
+                t, kb = aa_render_pick("subj", lessons, ud)
+            else:
+                ud["aa_subj"] = text
+                ud["aa_cat"]  = CAT_DARS
+                t, kb = aa_render_collect(ud)
+            await msg.reply_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+        # ── لوحة إدارة المشرف: عنوان درس PDF مُرسَل حديثاً ──
+        if awaiting == "aa_title":
+            fid = ud.pop("aa_pending_file", None)
+            if not fid:
+                await msg.reply_text("⚠️ لم أجد ملفاً معلّقاً، أعد إرسال الملف من جديد.")
+                return
+            lessons = load_lessons()
+            year = ud.get("aa_year"); spec = ud.get("aa_spec")
+            sem  = ud.get("aa_sem");  subj = ud.get("aa_subj")
+            cat  = ud.get("aa_cat", CAT_DARS)
+            (lessons.setdefault(year, {}).setdefault(spec, {}).setdefault(sem, {})
+                    .setdefault(subj, []).append([text, fid, cat]))
+            save_lessons(lessons)
+            ud["aa_added_count"] = ud.get("aa_added_count", 0) + 1
+            await msg.reply_text(f"✅ أُضيف: *{text}*", parse_mode="Markdown")
+            t, kb = aa_render_collect(ud)
+            await msg.reply_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+        # ── لوحة إدارة المشرف: إضافة رابط بدل ملف ──
+        if awaiting == "aa_url":
+            parts = [p.strip() for p in text.split("|", 1)]
+            if len(parts) != 2 or not is_url(parts[1]):
+                ud["awaiting"] = "aa_url"
+                await msg.reply_text(
+                    "⚠️ الصيغة يجب أن تكون:\n`العنوان | https://الرابط`\nحاول مجدداً:",
+                    parse_mode="Markdown"
+                )
+                return
+            title, url = parts
+            lessons = load_lessons()
+            year = ud.get("aa_year"); spec = ud.get("aa_spec")
+            sem  = ud.get("aa_sem");  subj = ud.get("aa_subj")
+            cat  = ud.get("aa_cat", CAT_DARS)
+            (lessons.setdefault(year, {}).setdefault(spec, {}).setdefault(sem, {})
+                    .setdefault(subj, []).append([title, url, cat]))
+            save_lessons(lessons)
+            ud["aa_added_count"] = ud.get("aa_added_count", 0) + 1
+            await msg.reply_text(f"✅ أُضيف: *{title}*", parse_mode="Markdown")
+            t, kb = aa_render_collect(ud)
+            await msg.reply_text(t, reply_markup=kb, parse_mode="Markdown")
+            return
+
+    # ── المشرف: استقبال ملف PDF ──
     if user.id in ADMIN_IDS:
         if msg and msg.document:
             fid = msg.document.file_id
+
+            # في وضع "جمع الدروس" من /admin: نطلب العنوان مباشرة بدل عرض file_id
+            if ud.get("aa_subj"):
+                ud["aa_pending_file"] = fid
+                ud["awaiting"] = "aa_title"
+                await msg.reply_text("📝 اكتب عنوان هذا الدرس:")
+                return
+
+            # خارج وضع الجمع: السلوك القديم (عرض file_id للاستخدام مع /adddars)
             await msg.reply_text(
                 f"📎 *file\_id:*\n`{fid}`\n\n"
                 "Reply على الملف ثم:\n"
                 "`/adddars سنة | تخصص | سداسي | مادة | عنوان`\n\n"
-                "/adminhelp للأوامر الكاملة",
+                "أو استخدم /admin للإضافة بالأزرار بلا كتابة يدوية.",
                 parse_mode="Markdown"
             )
         return
@@ -2034,6 +2504,27 @@ async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 # ================================================================
+#  ٢٨ب. معالج الأخطاء العام
+#  ─────────────────────────────────────────────────────────────
+#  بدون هذا، أي خطأ غير متوقع داخل أي أمر يختفي بصمت ولا يصل
+#  لا للطالب ولا للمشرف — كما حدث مع /dbcheck. من الآن فصاعداً
+#  يصل كخبر واضح لمجموعة المشرفين فوراً.
+# ================================================================
+
+async def on_error(update, context: ContextTypes.DEFAULT_TYPE):
+    err = context.error
+    print(f"❌ خطأ غير معالج: {err}")
+
+    # نص عادي بلا Markdown لتفادي فشل الإرسال بسبب رموز خاصة في رسالة الخطأ
+    short = str(err)[:500]
+    text = f"⚠️ حدث خطأ غير متوقع في البوت:\n\n{short}"
+    try:
+        await context.bot.send_message(ADMIN_CHAT_ID, text)
+    except Exception as e:
+        print(f"⚠️ تعذّر حتى إرسال إشعار الخطأ: {e}")
+
+
+# ================================================================
 #  ٢٩. بناء التطبيق
 # ================================================================
 
@@ -2062,6 +2553,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("ping",    cmd_ping))
     app.add_handler(CommandHandler("dbcheck", cmd_dbcheck))
     app.add_handler(CommandHandler("adminhelp", cmd_adminhelp))
+    app.add_handler(CommandHandler("admin",     cmd_admin))
 
     # الدروس
     app.add_handler(CommandHandler("adddars",       cmd_adddars))
@@ -2091,6 +2583,7 @@ def build_app() -> Application:
 
     # الكولباك والرسائل
     app.add_handler(CallbackQueryHandler(handle_cb))
+    app.add_error_handler(on_error)
     app.add_handler(MessageHandler(
         filters.Chat(ADMIN_CHAT_ID) & ~filters.COMMAND, handle_admin_reply
     ))
