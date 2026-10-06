@@ -1426,8 +1426,13 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================================================================
 
 async def handle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q    = update.callback_query
-    await q.answer()
+    q = update.callback_query
+    try:
+        await q.answer()
+    except Exception:
+        # قد تنتهي صلاحية الضغطة قبل أن نردّ عليها (ازدحام مؤقت، شبكة بطيئة...)
+        # لا نوقف المعالجة بسببها — نُكمل لتحديث الشاشة للطالب رغم ذلك.
+        pass
     data = q.data
     uid  = update.effective_user.id
     ud   = context.user_data
@@ -2511,12 +2516,26 @@ async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
 #  يصل كخبر واضح لمجموعة المشرفين فوراً.
 # ================================================================
 
+#  أخطاء معروفة من واجهة تيليغرام نفسها — عابرة وغير ضارة (لا فقدان بيانات،
+#  لا تعطّل)، فلا داعي لإزعاج المشرفين بها في كل مرة تحدث.
+_BENIGN_ERROR_SNIPPETS = (
+    "Query is too old",            # تأخّر الردّ على ضغطة زر عن نافذة تيليغرام الزمنية
+    "Message is not modified",     # تعديل رسالة بنفس محتواها الحالي بالضبط
+    "message to edit not found",   # الرسالة حُذفت يدوياً قبل محاولة تعديلها
+)
+
 async def on_error(update, context: ContextTypes.DEFAULT_TYPE):
-    err = context.error
+    err      = context.error
+    err_text = str(err)
+
+    if any(s in err_text for s in _BENIGN_ERROR_SNIPPETS):
+        print(f"ℹ️ خطأ تيليغرام عابر (تم تجاهله بصمت): {err_text}")
+        return
+
     print(f"❌ خطأ غير معالج: {err}")
 
     # نص عادي بلا Markdown لتفادي فشل الإرسال بسبب رموز خاصة في رسالة الخطأ
-    short = str(err)[:500]
+    short = err_text[:500]
     text = f"⚠️ حدث خطأ غير متوقع في البوت:\n\n{short}"
     try:
         await context.bot.send_message(ADMIN_CHAT_ID, text)
